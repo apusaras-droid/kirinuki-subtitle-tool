@@ -15,6 +15,7 @@
         <div class="header-actions">
           <button id="editorPageBtn" type="button" class="active">編集画面</button>
           <button id="settingsPageBtn" type="button">設定画面</button>
+          <button id="decorationPageBtn" type="button">デコレーション画面</button>
           <label class="checkbox-label export-toggle"><input id="burnSubtitles" type="checkbox" />字幕を焼き込む</label>
           <button id="saveSubtitlesBtn" type="button" disabled>字幕を保存</button>
           <button id="manualPreviewBtn" type="button" disabled>手動カットを仮出力</button>
@@ -209,6 +210,52 @@
               <label>字幕の黒縁<input id="subtitleOutlineWidth" type="number" value="2" step="1" min="0" /></label>
             </div>
           </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="decorationPage" class="decoration-page hidden-panel">
+      <div class="settings-page-header decoration-page-header">
+        <div>
+          <h2>デコレーション</h2>
+          <p>SRT から見た目と演出を分離して編集する。</p>
+        </div>
+        <div class="header-actions decoration-actions">
+          <button id="loadDecorationFromSubtitlesBtn" type="button">字幕から生成</button>
+          <button id="saveDecorationBtn" type="button" class="primary">保存</button>
+          <button id="exportDecorationJsonBtn" type="button">JSON出力</button>
+          <button id="decorationBackBtn" type="button" class="primary">編集画面へ戻る</button>
+        </div>
+      </div>
+      <div class="decoration-page-body">
+        <section class="decoration-panel decoration-list-panel">
+          <div class="section-title">
+            <h2>文字イベント</h2>
+            <span id="decorationCount">0件</span>
+          </div>
+          <div class="decoration-toolbar">
+            <label>入力SRT
+              <select id="decorationSourceSelect">
+                <option value="edited" selected>編集済みSRT</option>
+                <option value="final">完成SRT</option>
+              </select>
+            </label>
+            <button id="decorationReloadBtn" type="button">再読込</button>
+            <button id="decorationAddGroupBtn" type="button">エフェクトグループ追加</button>
+          </div>
+          <div id="decorationList" class="decoration-list"></div>
+        </section>
+        <section class="decoration-panel decoration-detail-panel">
+          <div class="section-title">
+            <h2>詳細</h2>
+            <span id="decorationSelectionLabel">未選択</span>
+          </div>
+          <div id="decorationDetail" class="decoration-detail"></div>
+          <div class="section-title">
+            <h2>エフェクトグループ</h2>
+            <span id="effectGroupCount">0件</span>
+          </div>
+          <div id="effectGroupList" class="effect-group-list"></div>
         </section>
       </div>
     </section>

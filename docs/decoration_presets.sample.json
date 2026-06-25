@@ -1,0 +1,52 @@
+{
+  "font_presets": [
+    {
+      "id": "font_standard",
+      "name": "標準",
+      "family": "Yu Gothic",
+      "size": 44,
+      "color": "#ffffff",
+      "outline_color": "#000000",
+      "outline_width": 4,
+      "shadow_color": "#000000",
+      "shadow_depth": 4
+    },
+    {
+      "id": "font_pop",
+      "name": "ポップ",
+      "family": "Yu Gothic",
+      "size": 54,
+      "color": "#ff5fa8",
+      "outline_color": "#ffffff",
+      "outline_width": 5,
+      "shadow_color": "#6b4a5a",
+      "shadow_depth": 3
+    }
+  ],
+  "effect_groups": [
+    {
+      "id": "effect_group_manga_pop",
+      "name": "漫画ポップ",
+      "effects": ["bubble_round", "sparkle", "pop_in", "shake"],
+      "description": "吹き出しとポップ演出をまとめた基本セット"
+    },
+    {
+      "id": "effect_group_yume_kawaii",
+      "name": "ゆめかわ",
+      "effects": ["bubble_soft", "heart", "float_in"],
+      "description": "淡い色と軽い浮遊感のセット"
+    }
+  ],
+  "layout_presets": [
+    {
+      "id": "layout_bottom_center",
+      "name": "下中央",
+      "anchor": "bottom_center"
+    },
+    {
+      "id": "layout_mid_lower",
+      "name": "やや下",
+      "anchor": "mid_lower"
+    }
+  ]
+}

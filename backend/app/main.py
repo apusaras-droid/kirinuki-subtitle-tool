@@ -25,6 +25,7 @@ from .services import (
     normalize_edit_plan_source_video,
     probe_video,
     project_info,
+    load_project_decoration,
     render_from_plan,
     resolve_project_path,
     require_project,
@@ -32,6 +33,7 @@ from .services import (
     preset_catalog,
     build_scene_catalog_from_subtitles,
     transcribe_audio,
+    save_project_decoration,
     update_project_info,
 )
 from .srt import write_srt
@@ -160,6 +162,11 @@ class ProjectScenesRequest(BaseModel):
     scenes: list[dict[str, Any]]
 
 
+class ProjectDecorationRequest(BaseModel):
+    project_id: str
+    decoration: dict[str, Any]
+
+
 @app.post("/api/projects")
 async def create_project(file: UploadFile = File(...), project_name: str | None = Form(default=None)):
     return await create_project_from_upload(file, project_name)
@@ -220,6 +227,18 @@ def api_version():
 @app.get("/api/presets")
 def api_presets():
     return preset_catalog()
+
+
+@app.get("/api/projects/{project_id}/decoration")
+def get_project_decoration(project_id: str):
+    require_project(project_id)
+    return {"decoration": load_project_decoration(project_id)}
+
+
+@app.post("/api/projects/decoration")
+def update_project_decoration(req: ProjectDecorationRequest):
+    updated = save_project_decoration(req.project_id, req.decoration)
+    return {"decoration": updated}
 
 
 @app.post("/api/video/probe")

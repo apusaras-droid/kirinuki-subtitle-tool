@@ -33,8 +33,15 @@ const state = {
     emotion_presets: [],
     subtitle_style_presets: [],
     scenes: [],
+    decoration_presets: {
+      font_presets: [],
+      effect_groups: [],
+      layout_presets: [],
+    },
     emotion_labels: ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
   },
+  decorationProject: null,
+  decorationSelectionId: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -140,11 +147,17 @@ async function loadPresets() {
     emotion_presets: data.emotion_presets || [],
     subtitle_style_presets: data.subtitle_style_presets || [],
     scenes: data.scenes || [],
+    decoration_presets: data.decoration_presets || {
+      font_presets: [],
+      effect_groups: [],
+      layout_presets: [],
+    },
     emotion_labels: data.emotion_labels || ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
   };
   updatePresetSelectors();
   renderSubtitles();
   renderVideoInfo();
+  renderDecorationPage();
 }
 
 function syncProjectScenesFromSubtitles() {
@@ -617,12 +630,18 @@ function setAppPage(page) {
   state.appPage = page;
   $("editorPageBtn").classList.toggle("active", page === "editor");
   $("settingsPageBtn").classList.toggle("active", page === "settings");
+  $("decorationPageBtn").classList.toggle("active", page === "decoration");
   $("videoShellWrap").classList.toggle("hidden-panel", page !== "editor");
   $("editorControlsWrap").classList.toggle("hidden-panel", page !== "editor");
   $("editorModeWrap").classList.toggle("hidden-panel", page !== "editor");
   $("processWrap").classList.toggle("hidden-panel", page !== "editor");
   $("workspaceWrap").classList.toggle("hidden-panel", page !== "editor");
   $("settingsPage").classList.toggle("hidden-panel", page !== "settings");
+  $("decorationPage").classList.toggle("hidden-panel", page !== "decoration");
+  if (page === "decoration" && !(state.decorationProject?.events?.length) && subtitleItems().length) {
+    buildDecorationProjectFromSubtitles();
+  }
+  if (page === "decoration") renderDecorationPage();
 }
 
 async function api(path, options = {}) {
@@ -1183,6 +1202,349 @@ function renderSubtitles() {
     list.appendChild(item);
   });
   renderScenes();
+  renderDecorationPage();
+}
+
+function decorationSourceSubtitles() {
+  return subtitleItems().map((sub, index) => ({
+    id: sub.id,
+    subtitle_id: sub.id,
+    index: index + 1,
+    start_sec: Number(sub.output_start_sec ?? sub.start_sec ?? 0) || 0,
+    end_sec: Number(sub.output_end_sec ?? sub.end_sec ?? 0) || 0,
+    text: sub.text || "",
+    scene_id: sub.scene_id || "",
+    speaker_label: sub.speaker_label || sub.speaker_id || "",
+    emotion: sub.emotion || "neutral",
+    subtitle_style_preset_id: sub.subtitle_style_preset_id || "",
+    effect_group_id: sub.effect_group_id || "",
+    seed: Number(sub.seed ?? 0) || (index + 1) * 101,
+    enabled: sub.enabled !== false,
+  }));
+}
+
+function decorationEffectGroups() {
+  const project = state.decorationProject || {};
+  const presets = state.presets.decoration_presets || {};
+  return (project.effect_groups && project.effect_groups.length ? project.effect_groups : presets.effect_groups || []).map((group) => ({
+    id: group.id || `effect_group_${Math.random().toString(16).slice(2, 8)}`,
+    name: group.name || group.id || "無題",
+    effects: Array.isArray(group.effects) ? [...group.effects] : String(group.effects || "").split(",").map((item) => item.trim()).filter(Boolean),
+    description: group.description || "",
+  }));
+}
+
+function decorationFontPresets() {
+  const project = state.decorationProject || {};
+  const presets = state.presets.decoration_presets || {};
+  return (project.font_presets && project.font_presets.length ? project.font_presets : presets.font_presets || []).map((preset) => ({ ...preset }));
+}
+
+function decorationLayoutPresets() {
+  const project = state.decorationProject || {};
+  const presets = state.presets.decoration_presets || {};
+  return (project.layout_presets && project.layout_presets.length ? project.layout_presets : presets.layout_presets || []).map((preset) => ({ ...preset }));
+}
+
+function buildDecorationProjectFromSubtitles() {
+  const subtitles = decorationSourceSubtitles();
+  const presets = state.presets.decoration_presets || {};
+  state.decorationProject = {
+    project_id: state.projectId,
+    source_srt: state.editPlanPath ? "subtitles/edited.srt" : "subtitles/original.srt",
+    events: subtitles.map((sub) => ({
+      id: sub.id,
+      subtitle_id: sub.subtitle_id,
+      text: sub.text,
+      start_sec: sub.start_sec,
+      end_sec: sub.end_sec,
+      scene_id: sub.scene_id,
+      speaker_label: sub.speaker_label,
+      emotion: sub.emotion,
+      subtitle_style_preset_id: sub.subtitle_style_preset_id,
+      effect_group_id: sub.effect_group_id || (presets.effect_groups?.[0]?.id || ""),
+      font_preset_id: presets.font_presets?.[0]?.id || "font_standard",
+      layout_preset_id: presets.layout_presets?.[0]?.id || "layout_bottom_center",
+      seed: sub.seed,
+      enabled: sub.enabled,
+    })),
+    effect_groups: decorationEffectGroups(),
+    font_presets: decorationFontPresets(),
+    layout_presets: decorationLayoutPresets(),
+    scenes: sceneCatalog(),
+  };
+  state.decorationSelectionId = state.decorationProject.events[0]?.id || null;
+  renderDecorationPage();
+  return state.decorationProject;
+}
+
+function currentDecorationEvent() {
+  if (!state.decorationProject?.events?.length) return null;
+  return state.decorationProject.events.find((item) => item.id === state.decorationSelectionId) || state.decorationProject.events[0] || null;
+}
+
+async function loadDecorationProjectFromServer() {
+  if (!state.projectId) return null;
+  const data = await api(`/api/projects/${state.projectId}/decoration`, { method: "GET" });
+  state.decorationProject = data.decoration || null;
+  if (state.decorationProject?.events?.length) {
+    state.decorationSelectionId = state.decorationProject.events[0].id;
+  }
+  renderDecorationPage();
+  return state.decorationProject;
+}
+
+async function saveDecorationProject() {
+  if (!state.projectId) return null;
+  if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+  const payload = {
+    project_id: state.projectId,
+    decoration: {
+      ...state.decorationProject,
+      scenes: sceneCatalog(),
+    },
+  };
+  const data = await api("/api/projects/decoration", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.decorationProject = data.decoration || state.decorationProject;
+  renderDecorationPage();
+  return data.decoration;
+}
+
+function downloadDecorationProjectJson() {
+  if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+  const blob = new Blob([JSON.stringify(state.decorationProject, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${state.projectId || "decoration"}_decoration_project.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function renderDecorationPage() {
+  const list = $("decorationList");
+  const detail = $("decorationDetail");
+  const groupList = $("effectGroupList");
+  if (!list || !detail || !groupList) return;
+  const project = state.decorationProject;
+  const events = project?.events || [];
+  const groups = decorationEffectGroups();
+  $("decorationCount").textContent = `${events.length}件`;
+  $("effectGroupCount").textContent = `${groups.length}件`;
+  $("decorationSelectionLabel").textContent = currentDecorationEvent()?.id || "未選択";
+  list.textContent = "";
+  groupList.textContent = "";
+  if (!project) {
+    detail.textContent = "字幕から生成するとここで装飾を編集できます。";
+  } else {
+    const selected = currentDecorationEvent();
+    $("decorationSelectionLabel").textContent = selected ? selected.id : "未選択";
+    detail.textContent = "";
+    if (selected) {
+      const preview = document.createElement("div");
+      preview.className = "decoration-preview";
+      const previewMeta = document.createElement("div");
+      previewMeta.textContent = `${fmtTime(selected.start_sec)} - ${fmtTime(selected.end_sec)} / ${selected.scene_id || "sceneなし"} / ${selected.speaker_label || "speakerなし"}`;
+      const previewLine = document.createElement("div");
+      previewLine.className = "preview-line";
+      previewLine.textContent = selected.text || "";
+      const chipRow = document.createElement("div");
+      chipRow.className = "decoration-chip-list";
+      [selected.emotion || "neutral", selected.subtitle_style_preset_id || "styleなし", selected.effect_group_id || "effectなし"].forEach((label) => {
+        const chip = document.createElement("span");
+        chip.className = "decoration-chip";
+        chip.textContent = label;
+        chipRow.appendChild(chip);
+      });
+      preview.appendChild(previewMeta);
+      preview.appendChild(previewLine);
+      preview.appendChild(chipRow);
+      detail.appendChild(preview);
+
+      const fields = document.createElement("div");
+      fields.className = "decoration-fields";
+      const makeField = (labelText, control) => {
+        const label = document.createElement("label");
+        label.textContent = labelText;
+        label.appendChild(control);
+        return label;
+      };
+      const emotion = presetOptions(
+        (state.presets.emotion_labels || []).map((item) => ({ id: item, name: item })),
+        selected.emotion || "neutral",
+      );
+      emotion.addEventListener("change", () => {
+        selected.emotion = emotion.value || "neutral";
+        renderDecorationPage();
+      });
+      const font = presetOptions(decorationFontPresets(), selected.font_preset_id || "", "");
+      font.addEventListener("change", () => {
+        selected.font_preset_id = font.value || "";
+        renderDecorationPage();
+      });
+      const style = presetOptions(state.presets.subtitle_style_presets || [], selected.subtitle_style_preset_id || "", "");
+      style.addEventListener("change", () => {
+        selected.subtitle_style_preset_id = style.value || "";
+        renderDecorationPage();
+      });
+      const effect = presetOptions(groups, selected.effect_group_id || "", "");
+      effect.addEventListener("change", () => {
+        selected.effect_group_id = effect.value || "";
+        renderDecorationPage();
+      });
+      const layout = presetOptions(decorationLayoutPresets(), selected.layout_preset_id || "", "");
+      layout.addEventListener("change", () => {
+        selected.layout_preset_id = layout.value || "";
+        renderDecorationPage();
+      });
+      const seedInput = document.createElement("input");
+      seedInput.type = "number";
+      seedInput.value = Number(selected.seed || 0);
+      seedInput.addEventListener("change", () => {
+        selected.seed = Number(seedInput.value) || 0;
+      });
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = selected.enabled !== false;
+      enabled.addEventListener("change", () => {
+        selected.enabled = enabled.checked;
+      });
+      fields.appendChild(makeField("感情", emotion));
+      fields.appendChild(makeField("フォント", font));
+      fields.appendChild(makeField("字幕スタイル", style));
+      fields.appendChild(makeField("エフェクトグループ", effect));
+      fields.appendChild(makeField("レイアウト", layout));
+      fields.appendChild(makeField("seed", seedInput));
+      fields.appendChild(makeField("有効", enabled));
+      detail.appendChild(fields);
+    }
+  }
+
+  events.forEach((eventItem, index) => {
+    const item = document.createElement("div");
+    item.className = `decoration-item${eventItem.id === state.decorationSelectionId ? " selected" : ""}`;
+    const idx = document.createElement("strong");
+    idx.textContent = `#${index + 1}`;
+    const meta = document.createElement("div");
+    meta.className = "decoration-meta";
+    const title = document.createElement("span");
+    title.textContent = `${fmtTime(eventItem.start_sec)} - ${fmtTime(eventItem.end_sec)}`;
+    const subline = document.createElement("small");
+    subline.textContent = `${eventItem.scene_id || "sceneなし"} / ${eventItem.emotion || "neutral"} / ${eventItem.effect_group_id || "effectなし"}`;
+    const text = document.createElement("div");
+    text.textContent = eventItem.text || "";
+    meta.appendChild(title);
+    meta.appendChild(subline);
+    meta.appendChild(text);
+    const action = document.createElement("button");
+    action.type = "button";
+    action.textContent = "選択";
+    action.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.decorationSelectionId = eventItem.id;
+      renderDecorationPage();
+    });
+    item.appendChild(idx);
+    item.appendChild(meta);
+    item.appendChild(action);
+    item.addEventListener("click", () => {
+      state.decorationSelectionId = eventItem.id;
+      renderDecorationPage();
+    });
+    list.appendChild(item);
+  });
+
+  groups.forEach((group) => {
+    const item = document.createElement("div");
+    item.className = `effect-group-item${currentDecorationEvent()?.effect_group_id === group.id ? " selected" : ""}`;
+    const header = document.createElement("div");
+    header.className = "effect-group-header";
+    const title = document.createElement("strong");
+    const nameInput = document.createElement("input");
+    nameInput.value = group.name || group.id;
+    nameInput.placeholder = "グループ名";
+    nameInput.style.minWidth = "180px";
+    const count = document.createElement("small");
+    count.textContent = group.id;
+    header.appendChild(title);
+    header.appendChild(count);
+    title.textContent = group.name || group.id;
+    const description = document.createElement("textarea");
+    description.value = group.description || "";
+    description.placeholder = "説明";
+    description.style.minHeight = "48px";
+    const effectRow = document.createElement("div");
+    effectRow.className = "effect-group-effects";
+    const effectInput = document.createElement("input");
+    effectInput.value = (group.effects || []).join(", ");
+    effectInput.placeholder = "effect_a, effect_b";
+    effectInput.style.minWidth = "240px";
+    const controls = document.createElement("div");
+    controls.className = "decoration-toolbar";
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.textContent = "保存";
+    saveBtn.addEventListener("click", () => {
+      const target = state.decorationProject?.effect_groups || [];
+      const nextEffects = effectInput.value.split(",").map((item) => item.trim()).filter(Boolean);
+      for (let i = 0; i < target.length; i += 1) {
+        if (target[i].id === group.id) {
+          target[i] = {
+            ...target[i],
+            name: nameInput.value.trim() || target[i].name || target[i].id,
+            description: description.value.trim(),
+            effects: nextEffects,
+          };
+        }
+      }
+      if (state.decorationProject) {
+        state.decorationProject.effect_groups = target;
+      }
+      renderDecorationPage();
+    });
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.textContent = "選択へ適用";
+    applyBtn.addEventListener("click", () => {
+      const current = currentDecorationEvent();
+      if (!current) return;
+      current.effect_group_id = group.id;
+      renderDecorationPage();
+    });
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "削除";
+    removeBtn.addEventListener("click", () => {
+      if (!state.decorationProject) return;
+      state.decorationProject.effect_groups = (state.decorationProject.effect_groups || []).filter((item) => item.id !== group.id);
+      for (const eventItem of state.decorationProject.events || []) {
+        if (eventItem.effect_group_id === group.id) eventItem.effect_group_id = "";
+      }
+      renderDecorationPage();
+    });
+    controls.appendChild(saveBtn);
+    controls.appendChild(applyBtn);
+    controls.appendChild(removeBtn);
+    for (const effect of group.effects || []) {
+      const chip = document.createElement("span");
+      chip.className = "decoration-chip";
+      chip.textContent = effect;
+      effectRow.appendChild(chip);
+    }
+    item.appendChild(header);
+    item.appendChild(nameInput);
+    item.appendChild(description);
+    item.appendChild(effectInput);
+    item.appendChild(controls);
+    item.appendChild(effectRow);
+    groupList.appendChild(item);
+  });
 }
 
 function setEditorView(view) {
@@ -1444,6 +1806,8 @@ async function loadSelectedVideo() {
   state.videoInfoExpanded = false;
   state.projectSettings = created.ui_state || state.projectSettings;
   state.projectScenes = created.scenes || [];
+  state.decorationProject = null;
+  state.decorationSelectionId = null;
   video.src = state.sourceVideoUrl;
   $("projectLabel").textContent = state.projectId;
   $("paths").textContent = created.source_video;
@@ -1460,6 +1824,7 @@ async function loadSelectedVideo() {
   setEditorView("timeline");
   renderWaveformEditor();
   drawTimeline();
+  await loadDecorationProjectFromServer().catch(() => {});
 }
 
 $("createProjectBtn").addEventListener("click", () => runStep("動画読み込み", loadSelectedVideo));
@@ -1645,7 +2010,9 @@ $("plannedModeBtn").addEventListener("click", () => setMode("planned"));
 $("renderedModeBtn").addEventListener("click", () => setMode("rendered"));
 $("editorPageBtn").addEventListener("click", () => setAppPage("editor"));
 $("settingsPageBtn").addEventListener("click", () => setAppPage("settings"));
+$("decorationPageBtn").addEventListener("click", () => setAppPage("decoration"));
 $("settingsBackBtn").addEventListener("click", () => setAppPage("editor"));
+$("decorationBackBtn").addEventListener("click", () => setAppPage("editor"));
 $("videoInfoToggleBtn").addEventListener("click", () => {
   state.videoInfoExpanded = !state.videoInfoExpanded;
   renderVideoInfo();
@@ -1725,6 +2092,53 @@ $("defaultEmotionPreset").addEventListener("change", () => {
 $("defaultSubtitleStylePreset").addEventListener("change", () => {
   saveProjectSettings().catch(() => {});
   renderScenes();
+});
+$("loadDecorationFromSubtitlesBtn").addEventListener("click", () => {
+  if (!state.projectId) {
+    setStatus("先に動画を読み込んでください", true);
+    return;
+  }
+  buildDecorationProjectFromSubtitles();
+  setStatus("字幕からデコレーションを生成しました");
+});
+$("decorationReloadBtn").addEventListener("click", () => {
+  if (!state.projectId) {
+    setStatus("先に動画を読み込んでください", true);
+    return;
+  }
+  loadDecorationProjectFromServer().catch((err) => setStatus(err.message || String(err), true));
+});
+$("saveDecorationBtn").addEventListener("click", () =>
+  runStep("デコレーション保存", async () => {
+    if (!state.projectId) throw new Error("先に動画を読み込んでください");
+    if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+    await saveDecorationProject();
+    setStatus("デコレーションを保存しました");
+  })
+);
+$("exportDecorationJsonBtn").addEventListener("click", () => {
+  if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+  downloadDecorationProjectJson();
+});
+$("decorationAddGroupBtn").addEventListener("click", () => {
+  if (!state.projectId) {
+    setStatus("先に動画を読み込んでください", true);
+    return;
+  }
+  if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+  const current = currentDecorationEvent();
+  const sourceGroup = current?.effect_group_id || state.presets.decoration_presets?.effect_groups?.[0]?.id || "effect_group_custom";
+  const nextId = `effect_group_${String(Date.now()).slice(-8)}`;
+  const preset = (state.presets.decoration_presets?.effect_groups || []).find((group) => group.id === sourceGroup);
+  const nextGroup = {
+    id: nextId,
+    name: `カスタム ${String((state.decorationProject.effect_groups || []).length + 1).padStart(2, "0")}`,
+    effects: [...(preset?.effects || ["bubble_round"])],
+    description: "手動追加グループ",
+  };
+  state.decorationProject.effect_groups = [...(state.decorationProject.effect_groups || []), nextGroup];
+  if (current) current.effect_group_id = nextId;
+  renderDecorationPage();
 });
 $("waveformStage").addEventListener("click", (event) => {
   if (state.editorView !== "waveform") return;

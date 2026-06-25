@@ -32,6 +32,7 @@ DOCS_DIR = ROOT / "docs"
 EMOTION_PRESETS_SAMPLE = DOCS_DIR / "emotion_presets.sample.json"
 SUBTITLE_STYLE_PRESETS_SAMPLE = DOCS_DIR / "subtitle_style_presets.sample.json"
 SCENES_SAMPLE = DOCS_DIR / "scenes.sample.json"
+DECORATION_PRESETS_SAMPLE = DOCS_DIR / "decoration_presets.sample.json"
 WAVEFORM_MAX_POINTS = 1800
 MAX_HISTORY_VERSIONS = 12
 
@@ -417,11 +418,69 @@ def load_scene_catalog() -> list[dict]:
     return data if isinstance(data, list) else fallback
 
 
+def load_decoration_presets() -> dict:
+    fallback = {
+        "font_presets": [
+            {
+                "id": "font_standard",
+                "name": "標準",
+                "family": "Yu Gothic",
+                "size": 44,
+                "color": "#ffffff",
+                "outline_color": "#000000",
+                "outline_width": 4,
+                "shadow_color": "#000000",
+                "shadow_depth": 4,
+            },
+            {
+                "id": "font_pop",
+                "name": "ポップ",
+                "family": "Yu Gothic",
+                "size": 54,
+                "color": "#ff5fa8",
+                "outline_color": "#ffffff",
+                "outline_width": 5,
+                "shadow_color": "#6b4a5a",
+                "shadow_depth": 3,
+            },
+        ],
+        "effect_groups": [
+            {
+                "id": "effect_group_manga_pop",
+                "name": "漫画ポップ",
+                "effects": ["bubble_round", "sparkle", "pop_in", "shake"],
+                "description": "吹き出しとポップ演出をまとめた基本セット",
+            },
+            {
+                "id": "effect_group_yume_kawaii",
+                "name": "ゆめかわ",
+                "effects": ["bubble_soft", "heart", "float_in"],
+                "description": "淡い色と軽い浮遊感のセット",
+            },
+        ],
+        "layout_presets": [
+            {
+                "id": "layout_bottom_center",
+                "name": "下中央",
+                "anchor": "bottom_center",
+            },
+            {
+                "id": "layout_mid_lower",
+                "name": "やや下",
+                "anchor": "mid_lower",
+            },
+        ],
+    }
+    data = _load_json_file(DECORATION_PRESETS_SAMPLE, fallback)
+    return data if isinstance(data, dict) else fallback
+
+
 def preset_catalog() -> dict:
     return {
         "emotion_presets": load_emotion_presets(),
         "subtitle_style_presets": load_subtitle_style_presets(),
         "scenes": load_scene_catalog(),
+        "decoration_presets": load_decoration_presets(),
         "emotion_labels": ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
     }
 
@@ -489,7 +548,7 @@ def normalize_edit_plan_source_video(project_id: str, plan: dict) -> dict:
 
 
 def create_project_dirs(base: Path) -> None:
-    for name in ["source", "audio", "transcript", "subtitles", "analysis", "preview", "output", "temp/segments", "temp/logs"]:
+    for name in ["source", "audio", "transcript", "subtitles", "analysis", "preview", "output", "decoration", "temp/segments", "temp/logs"]:
         (base / name).mkdir(parents=True, exist_ok=True)
 
 
@@ -511,6 +570,7 @@ def create_project_from_local_file(source_file: Path, project_name: str | None =
         "source_video": str(source_path.relative_to(base)),
         "source_video_url": f"/api/projects/{project_id}/media/source/{source_path.name}",
         "scenes": [],
+        "decoration": {},
         "ui_state": {
             "default_emotion_preset_id": "emotion_neutral",
             "default_subtitle_style_preset_id": "subtitle_standard",
@@ -522,6 +582,43 @@ def create_project_from_local_file(source_file: Path, project_name: str | None =
         **info,
         "source_video": str(source_path),
     }
+
+
+def load_project_decoration(project_id: str) -> dict:
+    path = require_project(project_id) / "decoration" / "decoration_project.json"
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    info = project_info(project_id)
+    presets = load_decoration_presets()
+    return {
+        "project_id": project_id,
+        "source_srt": str(resolve_project_path(project_id, "subtitles", "edited.srt")),
+        "events": [],
+        "effect_groups": presets.get("effect_groups", []),
+        "font_presets": presets.get("font_presets", []),
+        "layout_presets": presets.get("layout_presets", []),
+        "scenes": info.get("scenes", []),
+        "ui_state": info.get("ui_state", {}),
+    }
+
+
+def save_project_decoration(project_id: str, decoration: dict) -> dict:
+    path = require_project(project_id) / "decoration" / "decoration_project.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    presets = load_decoration_presets()
+    current = {
+        "project_id": project_id,
+        "source_srt": decoration.get("source_srt") or str(resolve_project_path(project_id, "subtitles", "edited.srt")),
+        "events": decoration.get("events") or [],
+        "effect_groups": decoration.get("effect_groups") or presets.get("effect_groups", []),
+        "font_presets": decoration.get("font_presets") or presets.get("font_presets", []),
+        "layout_presets": decoration.get("layout_presets") or presets.get("layout_presets", []),
+        "scenes": decoration.get("scenes") or [],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    atomic_write_json(path, current, backup=True)
+    update_project_info(project_id, {"decoration": current})
+    return current
 
 
 async def create_project_from_upload(file: UploadFile, project_name: str | None) -> dict:
