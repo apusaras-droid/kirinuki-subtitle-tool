@@ -272,6 +272,20 @@ label {
   overflow: auto;
 }
 
+.decoration-preview-shell {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.decoration-preview-shell video {
+  width: 100%;
+  max-height: 280px;
+  background: #111;
+  border-radius: 6px;
+}
+
 .decoration-preview {
   border: 1px solid var(--line);
   border-radius: 6px;

@@ -222,6 +222,8 @@
         </div>
         <div class="header-actions decoration-actions">
           <button id="loadDecorationFromSubtitlesBtn" type="button">字幕から生成</button>
+          <button id="buildDecorationAssBtn" type="button">ASS出力</button>
+          <button id="renderDecorationPreviewBtn" type="button">装飾プレビュー</button>
           <button id="saveDecorationBtn" type="button" class="primary">保存</button>
           <button id="exportDecorationJsonBtn" type="button">JSON出力</button>
           <button id="decorationBackBtn" type="button" class="primary">編集画面へ戻る</button>
@@ -242,6 +244,7 @@
             </label>
             <button id="decorationReloadBtn" type="button">再読込</button>
             <button id="decorationAddGroupBtn" type="button">エフェクトグループ追加</button>
+            <span id="decorationPreviewState" class="waveform-draft-state">未生成</span>
           </div>
           <div id="decorationList" class="decoration-list"></div>
         </section>
@@ -251,6 +254,13 @@
             <span id="decorationSelectionLabel">未選択</span>
           </div>
           <div id="decorationDetail" class="decoration-detail"></div>
+          <div class="decoration-preview-shell">
+            <div class="section-title">
+              <h2>装飾プレビュー</h2>
+              <span id="decorationPreviewLabel">未生成</span>
+            </div>
+            <video id="decorationPreviewVideo" controls playsinline></video>
+          </div>
           <div class="section-title">
             <h2>エフェクトグループ</h2>
             <span id="effectGroupCount">0件</span>

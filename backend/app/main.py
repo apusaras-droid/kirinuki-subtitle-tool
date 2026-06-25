@@ -30,9 +30,12 @@ from .services import (
     resolve_project_path,
     require_project,
     load_project_edit_plan,
+    load_project_decoration,
     preset_catalog,
     build_scene_catalog_from_subtitles,
     transcribe_audio,
+    render_decoration_video,
+    build_decoration_ass,
     save_project_decoration,
     update_project_info,
 )
@@ -167,6 +170,11 @@ class ProjectDecorationRequest(BaseModel):
     decoration: dict[str, Any]
 
 
+class DecorationRenderRequest(BaseModel):
+    project_id: str
+    preview: bool = True
+
+
 @app.post("/api/projects")
 async def create_project(file: UploadFile = File(...), project_name: str | None = Form(default=None)):
     return await create_project_from_upload(file, project_name)
@@ -239,6 +247,18 @@ def get_project_decoration(project_id: str):
 def update_project_decoration(req: ProjectDecorationRequest):
     updated = save_project_decoration(req.project_id, req.decoration)
     return {"decoration": updated}
+
+
+@app.post("/api/decoration/ass")
+def api_decoration_ass(req: ProjectDecorationRequest):
+    ass_path = build_decoration_ass(req.project_id, req.decoration)
+    return {"ass_path": str(ass_path)}
+
+
+@app.post("/api/decoration/render")
+def api_decoration_render(req: DecorationRenderRequest):
+    decoration = load_project_decoration(req.project_id)
+    return render_decoration_video(req.project_id, decoration, preview=req.preview)
 
 
 @app.post("/api/video/probe")

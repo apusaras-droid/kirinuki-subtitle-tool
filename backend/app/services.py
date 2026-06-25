@@ -172,6 +172,201 @@ def ffmpeg_subtitles_filter_with_style(path: Path | str, settings: dict | None =
     return f"{filter_expr}:force_style='{escaped_force_style}'"
 
 
+def ass_timecode(seconds: float) -> str:
+    total_ms = max(0, int(round(float(seconds) * 1000.0)))
+    h = total_ms // 3600000
+    m = (total_ms % 3600000) // 60000
+    s = (total_ms % 60000) // 1000
+    cs = (total_ms % 1000) // 10
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def sanitize_ass_text(text: str) -> str:
+    value = str(text or "")
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    value = value.replace("\\", r"\\")
+    value = value.replace("{", "(").replace("}", ")")
+    value = value.replace("\n", r"\N")
+    return value.strip()
+
+
+def ass_color(hex_color: str) -> str:
+    value = str(hex_color or "#ffffff").strip().lstrip("#")
+    if len(value) != 6:
+        value = "ffffff"
+    rr, gg, bb = value[0:2], value[2:4], value[4:6]
+    return f"&H00{bb}{gg}{rr}&"
+
+
+def effect_tags(effect_group: dict | None = None, emotion: str | None = None) -> str:
+    effects = [str(effect).strip() for effect in (effect_group or {}).get("effects", []) if str(effect).strip()]
+    tags: list[str] = []
+    if "bubble_round" in effects:
+        tags.append(r"\bord4\shad1")
+    if "bubble_soft" in effects:
+        tags.append(r"\bord3\shad0\blur1")
+    if "sparkle" in effects:
+        tags.append(r"\fs1")
+    if "pop_in" in effects:
+        tags.append(r"\fscx115\fscy115\t(0,120,\fscx100\fscy100)")
+    if "shake" in effects:
+        tags.append(r"\t(0,60,\frz2)\t(60,120,\frz-2)")
+    if "float_in" in effects:
+        tags.append(r"\move(0,0,0,0)")
+    if "heart" in effects:
+        tags.append(r"\c&HCC66FF&")
+    if emotion == "surprise":
+        tags.append(r"\fad(60,120)")
+    elif emotion == "joy":
+        tags.append(r"\fad(40,80)")
+    elif emotion == "sadness":
+        tags.append(r"\fad(80,140)")
+    return "".join(tags)
+
+
+def build_decoration_ass(project_id: str, decoration: dict, output_path: Path | None = None) -> Path:
+    base = require_project(project_id)
+    source_srt = decoration.get("source_srt") or str(resolve_project_path(project_id, "subtitles", "edited.srt"))
+    source_path = Path(source_srt)
+    if not source_path.is_absolute():
+        source_path = base / source_path
+    if not source_path.exists():
+        fallback = resolve_project_path(project_id, "subtitles", "edited.srt")
+        if fallback.exists():
+            source_path = fallback
+        else:
+            fallback = resolve_project_path(project_id, "subtitles", "original.srt")
+            if fallback.exists():
+                source_path = fallback
+            else:
+                raise HTTPException(status_code=404, detail="字幕ファイルが見つかりません")
+    subtitles = json.loads(source_path.read_text(encoding="utf-8")) if source_path.suffix.lower() == ".json" else None
+    if subtitles is None:
+        from .srt import parse_srt
+
+        subtitles = parse_srt(source_path.read_text(encoding="utf-8", errors="replace"))
+    if isinstance(subtitles, dict):
+        subtitles = subtitles.get("subtitles", [])
+    subtitles = [item for item in subtitles or [] if item.get("enabled", True)]
+    font_presets = {item.get("id"): item for item in (decoration.get("font_presets") or load_decoration_presets().get("font_presets", []))}
+    effect_groups = {item.get("id"): item for item in (decoration.get("effect_groups") or load_decoration_presets().get("effect_groups", []))}
+    layout_presets = {item.get("id"): item for item in (decoration.get("layout_presets") or load_decoration_presets().get("layout_presets", []))}
+    default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
+    ass_lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        "PlayResX: 1280",
+        "PlayResY: 720",
+        "WrapStyle: 2",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+    ]
+    style_name = "DecorDefault"
+    ass_lines.append(
+        "Style: "
+        + ",".join(
+            [
+                style_name,
+                str(default_font.get("family", "Yu Gothic")),
+                str(int(float(default_font.get("size", 44) or 44))),
+                ass_color(default_font.get("color", "#ffffff")),
+                ass_color(default_font.get("color", "#ffffff")),
+                ass_color(default_font.get("outline_color", "#000000")),
+                ass_color("#000000"),
+                "0",
+                "0",
+                "0",
+                "0",
+                "100",
+                "100",
+                "0",
+                "0",
+                "3",
+                str(max(0, int(float(default_font.get("outline_width", 4) or 4)))),
+                str(max(0, int(float(default_font.get("shadow_depth", 4) or 4)))),
+                "2",
+                "60",
+                "60",
+                "60",
+                "1",
+            ]
+        )
+    )
+    ass_lines += [
+        "",
+        "[Events]",
+        "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+    ]
+    default_layout = next(iter(layout_presets.values()), {"anchor": "bottom_center"})
+    for item in subtitles:
+        start = float(item.get("start_sec", item.get("output_start_sec", 0.0)) or 0.0)
+        end = float(item.get("end_sec", item.get("output_end_sec", start + 1.0)) or (start + 1.0))
+        font = font_presets.get(item.get("font_preset_id")) or default_font
+        effect_group = effect_groups.get(item.get("effect_group_id"))
+        layout = layout_presets.get(item.get("layout_preset_id")) or default_layout
+        font_size = int(float(font.get("size", 44) or 44))
+        outline = max(0, int(float(font.get("outline_width", 4) or 4)))
+        shadow = max(0, int(float(font.get("shadow_depth", 4) or 4)))
+        primary = ass_color(font.get("color", "#ffffff"))
+        outline_color = ass_color(font.get("outline_color", "#000000"))
+        anchor = str(layout.get("anchor", "bottom_center"))
+        alignment = "2" if anchor == "bottom_center" else "8" if anchor == "top_center" else "5"
+        tags = [f"\\fs{font_size}", f"\\1c{primary}", f"\\3c{outline_color}", f"\\bord{outline}", f"\\shad{shadow}"]
+        tags.append(effect_tags(effect_group, item.get("emotion")))
+        if str(item.get("speaker_label") or "").strip():
+            text = f"{item.get('speaker_label')}: {sanitize_ass_text(item.get('text', ''))}"
+        else:
+            text = sanitize_ass_text(item.get("text", ""))
+        ass_lines.append(
+            f"Dialogue: 0,{ass_timecode(start)},{ass_timecode(end)},"
+            f"{style_name},,0,0,0,,{{{''.join(tags)}}}{text}"
+        )
+    ass_text = "\n".join(ass_lines) + "\n"
+    ass_path = output_path or (base / "decoration" / "decorated.ass")
+    atomic_write_text(ass_path, ass_text, encoding="utf-8")
+    return ass_path
+
+
+def render_decoration_video(project_id: str, decoration: dict, preview: bool = True) -> dict:
+    ensure_tool("ffmpeg")
+    base = require_project(project_id)
+    ass_path = build_decoration_ass(project_id, decoration, base / "decoration" / "decorated.ass")
+    source_video = project_source_video(project_id)
+    out_dir = base / ("preview" if preview else "output")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_path = out_dir / ("decorated_preview.mp4" if preview else "decorated_final.mp4")
+    log_path = base / "temp" / "logs" / ("decoration_preview.log" if preview else "decoration_final.log")
+    run_command(
+        [
+            "ffmpeg",
+            "-y",
+            *ffmpeg_cfr_args(),
+            "-i",
+            str(source_video),
+            "-vf",
+            f"ass={path_for_cli(ass_path).replace('\\\\', '/')}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20" if preview else "18",
+            "-c:a",
+            "copy",
+            str(output_path),
+        ],
+        log_path,
+    )
+    audit_project_event(project_id, "decoration.render", context={"preview": preview, "ass_path": str(ass_path), "output_path": str(output_path)})
+    return {
+        "ass_path": str(ass_path),
+        "video_path": str(output_path),
+        "video_url": f"/api/projects/{project_id}/media/{'preview' if preview else 'output'}/{output_path.name}",
+    }
+
+
 def ffmpeg_cfr_args() -> list[str]:
     try:
         proc = subprocess.run(["ffmpeg", "-hide_banner", "-version"], text=True, capture_output=True, encoding="utf-8", errors="replace", cwd=ROOT)

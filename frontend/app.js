@@ -42,6 +42,7 @@ const state = {
   },
   decorationProject: null,
   decorationSelectionId: null,
+  decorationPreviewUrl: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1331,6 +1332,7 @@ function renderDecorationPage() {
   const list = $("decorationList");
   const detail = $("decorationDetail");
   const groupList = $("effectGroupList");
+  const previewVideo = $("decorationPreviewVideo");
   if (!list || !detail || !groupList) return;
   const project = state.decorationProject;
   const events = project?.events || [];
@@ -1338,6 +1340,10 @@ function renderDecorationPage() {
   $("decorationCount").textContent = `${events.length}件`;
   $("effectGroupCount").textContent = `${groups.length}件`;
   $("decorationSelectionLabel").textContent = currentDecorationEvent()?.id || "未選択";
+  $("decorationPreviewLabel").textContent = state.decorationPreviewUrl ? "生成済み" : "未生成";
+  if (previewVideo) {
+    previewVideo.src = state.decorationPreviewUrl ? `${state.decorationPreviewUrl}?t=${Date.now()}` : "";
+  }
   list.textContent = "";
   groupList.textContent = "";
   if (!project) {
@@ -1801,6 +1807,7 @@ async function loadSelectedVideo() {
   };
   state.waveformLoopRange = null;
   state.previewUrl = null;
+  state.decorationPreviewUrl = null;
   state.videoInfo = null;
   state.processingSummary = null;
   state.videoInfoExpanded = false;
@@ -2120,6 +2127,36 @@ $("exportDecorationJsonBtn").addEventListener("click", () => {
   if (!state.decorationProject) buildDecorationProjectFromSubtitles();
   downloadDecorationProjectJson();
 });
+$("buildDecorationAssBtn").addEventListener("click", () =>
+  runStep("ASS出力", async () => {
+    if (!state.projectId) throw new Error("先に動画を読み込んでください");
+    if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+    await saveDecorationProject();
+    const data = await api("/api/decoration/ass", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: state.projectId, decoration: state.decorationProject }),
+    });
+    $("paths").textContent = data.ass_path;
+    setStatus("ASSを出力しました");
+  })
+);
+$("renderDecorationPreviewBtn").addEventListener("click", () =>
+  runStep("装飾プレビュー", async () => {
+    if (!state.projectId) throw new Error("先に動画を読み込んでください");
+    if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+    await saveDecorationProject();
+    const data = await api("/api/decoration/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: state.projectId, preview: true }),
+    });
+    state.decorationPreviewUrl = `${data.video_url}?t=${Date.now()}`;
+    $("paths").textContent = data.video_path;
+    renderDecorationPage();
+    setAppPage("decoration");
+  })
+);
 $("decorationAddGroupBtn").addEventListener("click", () => {
   if (!state.projectId) {
     setStatus("先に動画を読み込んでください", true);

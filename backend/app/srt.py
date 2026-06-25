@@ -11,6 +11,45 @@ SENTENCE_BREAK_TOKENS = {"。", "！", "？", "!", "?", "…", "\n"}
 WHITESPACE_TOKENS = {" ", "\t", "\r", "\n"}
 
 
+def parse_srt(srt_text: str) -> list[dict]:
+    text = str(srt_text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return []
+    blocks = re.split(r"\n\s*\n", text)
+    subtitles: list[dict] = []
+    for idx, block in enumerate(blocks, start=1):
+        lines = [line.rstrip() for line in block.split("\n") if line.strip() or len(block.split("\n")) == 1]
+        if not lines:
+            continue
+        if re.fullmatch(r"\d+", lines[0].strip()):
+            lines = lines[1:]
+        if not lines:
+            continue
+        time_line = lines[0].strip()
+        match = re.match(r"(?P<start>\d+:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(?P<end>\d+:\d{2}:\d{2}[,.]\d{3})", time_line)
+        if not match:
+            continue
+
+        def parse_time(value: str) -> float:
+            hours, minutes, rest = value.replace(",", ".").split(":")
+            seconds, millis = rest.split(".")
+            return int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis[:3].ljust(3, "0")) / 1000.0
+
+        body = "\n".join(lines[1:]).strip()
+        subtitles.append(
+            {
+                "id": f"sub_{idx:04}",
+                "enabled": True,
+                "start_sec": round(parse_time(match.group("start")), 3),
+                "end_sec": round(parse_time(match.group("end")), 3),
+                "output_start_sec": round(parse_time(match.group("start")), 3),
+                "output_end_sec": round(parse_time(match.group("end")), 3),
+                "text": body,
+            }
+        )
+    return subtitles
+
+
 def sanitize_srt_text(text: str, *, strict_burn: bool = False) -> str:
     raw = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     cleaned_lines: list[str] = []
