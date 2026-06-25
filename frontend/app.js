@@ -1280,6 +1280,51 @@ function createDecorationEffectGroupFromCurrentEvent() {
   return newGroup;
 }
 
+function applyDecorationGroupToEvent(eventItem, group) {
+  if (!eventItem || !group) return;
+  eventItem.effect_group_id = group.id;
+  const preset = emotionPresetForEmotion(eventItem.emotion);
+  if (!eventItem.emotion_preset_id) eventItem.emotion_preset_id = preset.id;
+  if (!eventItem.subtitle_style_preset_id || eventItem.subtitle_style_preset_id === "subtitle_standard") {
+    eventItem.subtitle_style_preset_id = preset.subtitle_style_preset_id || eventItem.subtitle_style_preset_id;
+  }
+  if (!eventItem.font_preset_id || eventItem.font_preset_id === "font_standard") {
+    eventItem.font_preset_id = preset.font_preset_id || eventItem.font_preset_id;
+  }
+}
+
+function applyDecorationGroupToSelection(group) {
+  const current = currentDecorationEvent();
+  if (!current || !group) return 0;
+  applyDecorationGroupToEvent(current, group);
+  return 1;
+}
+
+function applyDecorationGroupToCurrentScene(group) {
+  const current = currentDecorationEvent();
+  if (!current || !group) return 0;
+  const sceneId = String(current.scene_id || "").trim();
+  if (!sceneId) return 0;
+  let count = 0;
+  for (const eventItem of state.decorationProject?.events || []) {
+    if (String(eventItem.scene_id || "").trim() === sceneId) {
+      applyDecorationGroupToEvent(eventItem, group);
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function applyDecorationGroupToAll(group) {
+  if (!group) return 0;
+  let count = 0;
+  for (const eventItem of state.decorationProject?.events || []) {
+    applyDecorationGroupToEvent(eventItem, group);
+    count += 1;
+  }
+  return count;
+}
+
 function decorationEffectLibrary() {
   const presets = state.presets.decoration_presets || {};
   const library = presets.effect_library || [];
@@ -1699,10 +1744,29 @@ function renderDecorationPage() {
     applyBtn.type = "button";
     applyBtn.textContent = "選択へ適用";
     applyBtn.addEventListener("click", () => {
-      const current = currentDecorationEvent();
-      if (!current) return;
-      current.effect_group_id = group.id;
+      if (!state.decorationProject) return;
+      applyDecorationGroupToSelection(group);
       renderDecorationPage();
+    });
+    const applySceneBtn = document.createElement("button");
+    applySceneBtn.type = "button";
+    applySceneBtn.textContent = "同シーンへ適用";
+    applySceneBtn.addEventListener("click", () => {
+      if (!state.decorationProject) return;
+      const count = applyDecorationGroupToCurrentScene(group);
+      if (!count) return;
+      renderDecorationPage();
+      setStatus(`同シーンへ ${count} 件適用しました`);
+    });
+    const applyAllBtn = document.createElement("button");
+    applyAllBtn.type = "button";
+    applyAllBtn.textContent = "全体へ適用";
+    applyAllBtn.addEventListener("click", () => {
+      if (!state.decorationProject) return;
+      const count = applyDecorationGroupToAll(group);
+      if (!count) return;
+      renderDecorationPage();
+      setStatus(`全体へ ${count} 件適用しました`);
     });
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
@@ -1718,6 +1782,8 @@ function renderDecorationPage() {
     controls.appendChild(saveBtn);
     controls.appendChild(duplicateBtn);
     controls.appendChild(applyBtn);
+    controls.appendChild(applySceneBtn);
+    controls.appendChild(applyAllBtn);
     controls.appendChild(removeBtn);
     effectRow.appendChild(effectSelect);
     effectRow.appendChild(addEffectBtn);
