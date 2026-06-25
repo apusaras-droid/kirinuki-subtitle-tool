@@ -1253,6 +1253,33 @@ function decorationEffectGroups() {
   }));
 }
 
+function createDecorationEffectGroupFromCurrentEvent() {
+  if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+  const current = currentDecorationEvent();
+  if (!current) return null;
+  const preset = emotionPresetForEmotion(current.emotion);
+  const sourceGroupId = current.effect_group_id || preset.effect_group_id || state.presets.decoration_presets?.effect_groups?.[0]?.id || "";
+  const sourceGroup = decorationEffectGroups().find((group) => group.id === sourceGroupId) || {
+    id: sourceGroupId || "effect_group_custom",
+    name: preset.name || current.emotion || "演出セット",
+    description: `${current.emotion || "neutral"} 用の演出セット`,
+    effects: ["bubble_round", "sparkle"],
+  };
+  const newId = `effect_group_${String(Date.now()).slice(-8)}`;
+  const newGroup = {
+    id: newId,
+    name: `${sourceGroup.name || preset.name || current.emotion || "演出セット"} copy`,
+    description: sourceGroup.description || `${current.emotion || "neutral"} 用の演出セット`,
+    effects: [...(sourceGroup.effects || [])],
+  };
+  state.decorationProject.effect_groups = [...(state.decorationProject.effect_groups || []), newGroup];
+  current.effect_group_id = newId;
+  current.emotion_preset_id = preset.id;
+  current.subtitle_style_preset_id = preset.subtitle_style_preset_id || current.subtitle_style_preset_id;
+  current.font_preset_id = preset.font_preset_id || current.font_preset_id;
+  return newGroup;
+}
+
 function decorationEffectLibrary() {
   const presets = state.presets.decoration_presets || {};
   const library = presets.effect_library || [];
@@ -2260,6 +2287,16 @@ $("loadDecorationFromSubtitlesBtn").addEventListener("click", () => {
     .then(() => setStatus("字幕からデコレーションを生成しました"))
     .catch((err) => setStatus(err.message || String(err), true));
 });
+$("createEffectGroupFromCurrentBtn").addEventListener("click", () =>
+  runStep("演出セット作成", async () => {
+    if (!state.projectId) throw new Error("先に動画を読み込んでください");
+    const created = createDecorationEffectGroupFromCurrentEvent();
+    if (!created) throw new Error("先に対象字幕を選択してください");
+    await saveDecorationProject();
+    renderDecorationPage();
+    setStatus("現在字幕から演出セットを作成しました");
+  })
+);
 $("decorationReloadBtn").addEventListener("click", () => {
   if (!state.projectId) {
     setStatus("先に動画を読み込んでください", true);
