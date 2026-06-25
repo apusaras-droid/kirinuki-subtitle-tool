@@ -216,12 +216,30 @@ def effect_tags(effect_group: dict | None = None, emotion: str | None = None) ->
     if "heart" in effects:
         tags.append(r"\c&HCC66FF&")
     if emotion == "surprise":
-        tags.append(r"\fad(60,120)")
+        tags.append(r"\fad(60,120)\c&H00D8FF&")
     elif emotion == "joy":
-        tags.append(r"\fad(40,80)")
+        tags.append(r"\fad(40,80)\c&H55FFAA&")
     elif emotion == "sadness":
-        tags.append(r"\fad(80,140)")
+        tags.append(r"\fad(80,140)\c&HFFAA88&")
+    elif emotion == "anger":
+        tags.append(r"\fad(30,70)\c&H6666FF&")
+    elif emotion == "teasing":
+        tags.append(r"\fad(35,75)\c&HFF66E6&")
     return "".join(tags)
+
+
+def resolve_emotion_preset(emotion: str | None, presets: list[dict] | None = None) -> dict:
+    target = str(emotion or "neutral").strip().lower()
+    for preset in presets or load_emotion_presets():
+        if str(preset.get("emotion") or preset.get("id") or "").strip().lower() == target:
+            return dict(preset)
+    return {
+        "id": "emotion_neutral",
+        "name": "通常",
+        "emotion": "neutral",
+        "effect_group_id": "",
+        "subtitle_style_preset_id": "subtitle_standard",
+    }
 
 
 def build_decoration_ass(project_id: str, decoration: dict, output_path: Path | None = None) -> Path:
@@ -251,6 +269,7 @@ def build_decoration_ass(project_id: str, decoration: dict, output_path: Path | 
     font_presets = {item.get("id"): item for item in (decoration.get("font_presets") or load_decoration_presets().get("font_presets", []))}
     effect_groups = {item.get("id"): item for item in (decoration.get("effect_groups") or load_decoration_presets().get("effect_groups", []))}
     layout_presets = {item.get("id"): item for item in (decoration.get("layout_presets") or load_decoration_presets().get("layout_presets", []))}
+    emotion_presets = load_emotion_presets()
     default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
     ass_lines = [
         "[Script Info]",
@@ -303,8 +322,16 @@ def build_decoration_ass(project_id: str, decoration: dict, output_path: Path | 
     for item in subtitles:
         start = float(item.get("start_sec", item.get("output_start_sec", 0.0)) or 0.0)
         end = float(item.get("end_sec", item.get("output_end_sec", start + 1.0)) or (start + 1.0))
-        font = font_presets.get(item.get("font_preset_id")) or default_font
-        effect_group = effect_groups.get(item.get("effect_group_id"))
+        emotion_preset = next(
+            (
+                preset
+                for preset in emotion_presets
+                if str(preset.get("id", "")).strip() == str(item.get("emotion_preset_id", "")).strip()
+            ),
+            resolve_emotion_preset(item.get("emotion"), emotion_presets),
+        )
+        font = font_presets.get(item.get("font_preset_id")) or font_presets.get(emotion_preset.get("font_preset_id")) or default_font
+        effect_group = effect_groups.get(item.get("effect_group_id")) or effect_groups.get(emotion_preset.get("effect_group_id"))
         layout = layout_presets.get(item.get("layout_preset_id")) or default_layout
         font_size = int(float(font.get("size", 44) or 44))
         outline = max(0, int(float(font.get("outline_width", 4) or 4)))
@@ -540,15 +567,47 @@ def load_emotion_presets() -> list[dict]:
             "target_scope": "scene",
             "effect_group_id": "",
             "subtitle_style_preset_id": "subtitle_standard",
+            "font_preset_id": "font_standard",
             "description": "標準字幕",
+        },
+        {
+            "id": "emotion_joy_default",
+            "name": "喜び",
+            "emotion": "joy",
+            "target_scope": "scene",
+            "effect_group_id": "effect_group_manga_pop",
+            "subtitle_style_preset_id": "subtitle_emotion_joy",
+            "font_preset_id": "font_pop",
+            "description": "明るい色と弾む演出",
+        },
+        {
+            "id": "emotion_anger_default",
+            "name": "怒り",
+            "emotion": "anger",
+            "target_scope": "scene",
+            "effect_group_id": "effect_group_manga_pop",
+            "subtitle_style_preset_id": "subtitle_emotion_anger",
+            "font_preset_id": "font_pop",
+            "description": "赤寄りの強い演出",
+        },
+        {
+            "id": "emotion_sadness_default",
+            "name": "哀しみ",
+            "emotion": "sadness",
+            "target_scope": "scene",
+            "effect_group_id": "effect_group_yume_kawaii",
+            "subtitle_style_preset_id": "subtitle_emotion_sadness",
+            "font_preset_id": "font_standard",
+            "description": "落ち着いた見た目",
         },
         {
             "id": "emotion_surprise_default",
             "name": "驚き",
             "emotion": "surprise",
             "target_scope": "scene",
-            "effect_group_id": "",
+            "effect_group_id": "effect_group_manga_pop",
             "subtitle_style_preset_id": "subtitle_emotion_surprise",
+            "font_preset_id": "font_pop",
             "description": "驚きシーンの既定字幕",
         },
     ]
@@ -591,6 +650,57 @@ def load_subtitle_style_presets() -> list[dict]:
             "shadow_enabled": True,
             "shadow_color": "#000000",
             "shadow_blur": 5,
+        },
+        {
+            "id": "subtitle_emotion_joy",
+            "name": "喜び",
+            "font_name": "Yu Gothic",
+            "font_size": 50,
+            "font_weight": "bold",
+            "text_color": "#FFF06A",
+            "outline_color": "#FFFFFF",
+            "outline_width": 4,
+            "bubble_style": "speech",
+            "bubble_fill_color": "#FFFFFF",
+            "bubble_outline_color": "#55FFAA",
+            "bubble_outline_width": 3,
+            "shadow_enabled": True,
+            "shadow_color": "#004422",
+            "shadow_blur": 4,
+        },
+        {
+            "id": "subtitle_emotion_anger",
+            "name": "怒り",
+            "font_name": "Yu Gothic",
+            "font_size": 52,
+            "font_weight": "heavy",
+            "text_color": "#FF7A7A",
+            "outline_color": "#FFFFFF",
+            "outline_width": 5,
+            "bubble_style": "burst",
+            "bubble_fill_color": "#25000A",
+            "bubble_outline_color": "#FF5A5A",
+            "bubble_outline_width": 4,
+            "shadow_enabled": True,
+            "shadow_color": "#330000",
+            "shadow_blur": 5,
+        },
+        {
+            "id": "subtitle_emotion_sadness",
+            "name": "哀しみ",
+            "font_name": "Yu Gothic",
+            "font_size": 46,
+            "font_weight": "regular",
+            "text_color": "#A7D7FF",
+            "outline_color": "#FFFFFF",
+            "outline_width": 4,
+            "bubble_style": "soft",
+            "bubble_fill_color": "#D9F0FF",
+            "bubble_outline_color": "#A7D7FF",
+            "bubble_outline_width": 3,
+            "shadow_enabled": True,
+            "shadow_color": "#003366",
+            "shadow_blur": 4,
         },
     ]
     data = _load_json_file(SUBTITLE_STYLE_PRESETS_SAMPLE, fallback)

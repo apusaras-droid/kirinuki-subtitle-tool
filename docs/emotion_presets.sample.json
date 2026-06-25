@@ -6,6 +6,7 @@
     "target_scope": "scene",
     "effect_group_id": "",
     "subtitle_style_preset_id": "subtitle_standard",
+    "font_preset_id": "font_standard",
     "description": "標準字幕"
   },
   {
@@ -13,8 +14,9 @@
     "name": "喜び",
     "emotion": "joy",
     "target_scope": "scene",
-    "effect_group_id": "",
+    "effect_group_id": "effect_group_manga_pop",
     "subtitle_style_preset_id": "subtitle_emotion_joy",
+    "font_preset_id": "font_pop",
     "description": "喜びシーンの既定字幕"
   },
   {
@@ -22,8 +24,9 @@
     "name": "怒り",
     "emotion": "anger",
     "target_scope": "scene",
-    "effect_group_id": "",
+    "effect_group_id": "effect_group_manga_pop",
     "subtitle_style_preset_id": "subtitle_emotion_anger",
+    "font_preset_id": "font_pop",
     "description": "怒りシーンの既定字幕"
   },
   {
@@ -31,8 +34,9 @@
     "name": "悲しみ",
     "emotion": "sadness",
     "target_scope": "scene",
-    "effect_group_id": "",
+    "effect_group_id": "effect_group_yume_kawaii",
     "subtitle_style_preset_id": "subtitle_emotion_sadness",
+    "font_preset_id": "font_standard",
     "description": "悲しみシーンの既定字幕"
   },
   {
@@ -40,8 +44,9 @@
     "name": "驚き",
     "emotion": "surprise",
     "target_scope": "scene",
-    "effect_group_id": "",
+    "effect_group_id": "effect_group_manga_pop",
     "subtitle_style_preset_id": "subtitle_emotion_surprise",
+    "font_preset_id": "font_pop",
     "description": "驚きシーンの既定字幕"
   }
 ]

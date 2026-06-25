@@ -1253,6 +1253,36 @@ function decorationEffectGroups() {
   }));
 }
 
+function emotionPresets() {
+  return (state.presets.emotion_presets || []).map((item) => ({ ...item }));
+}
+
+function emotionPresetForEmotion(emotion) {
+  const key = String(emotion || "neutral").trim().toLowerCase();
+  return emotionPresets().find((item) => String(item.emotion || item.id || "").trim().toLowerCase() === key) || {
+    id: "emotion_neutral",
+    name: "通常",
+    emotion: "neutral",
+    effect_group_id: "",
+    subtitle_style_preset_id: "subtitle_standard",
+    font_preset_id: "font_standard",
+  };
+}
+
+function emotionVisualTheme(emotion) {
+  const key = String(emotion || "neutral").toLowerCase();
+  const themes = {
+    joy: { bg: "#fffbe6", border: "#f4d35e", chip: "#e7b600" },
+    anger: { bg: "#fff0f0", border: "#ff6b6b", chip: "#b42318" },
+    sadness: { bg: "#eef6ff", border: "#7cb5ff", chip: "#3e63dd" },
+    surprise: { bg: "#f3edff", border: "#9c7cff", chip: "#6f42c1" },
+    teasing: { bg: "#fff0fb", border: "#f472b6", chip: "#be185d" },
+    fear: { bg: "#eefcf8", border: "#63c5b5", chip: "#0f766e" },
+    embarrassment: { bg: "#fff5ea", border: "#f59e0b", chip: "#b45309" },
+  };
+  return themes[key] || { bg: "#f7f9fc", border: "#d0d7e2", chip: "#64748b" };
+}
+
 function decorationFontPresets() {
   const project = state.decorationProject || {};
   const presets = state.presets.decoration_presets || {};
@@ -1272,6 +1302,7 @@ function buildDecorationProjectFromSubtitles(source = null) {
     project_id: state.projectId,
     source_srt: source?.path || (state.editPlanPath ? "subtitles/edited.srt" : "subtitles/original.srt"),
     events: subtitles.map((sub) => ({
+      emotion_preset_id: emotionPresetForEmotion(sub.emotion).id,
       id: sub.id,
       subtitle_id: sub.subtitle_id,
       text: sub.text,
@@ -1280,9 +1311,9 @@ function buildDecorationProjectFromSubtitles(source = null) {
       scene_id: sub.scene_id,
       speaker_label: sub.speaker_label,
       emotion: sub.emotion,
-      subtitle_style_preset_id: sub.subtitle_style_preset_id,
-      effect_group_id: sub.effect_group_id || (presets.effect_groups?.[0]?.id || ""),
-      font_preset_id: presets.font_presets?.[0]?.id || "font_standard",
+      subtitle_style_preset_id: sub.subtitle_style_preset_id || emotionPresetForEmotion(sub.emotion).subtitle_style_preset_id || "subtitle_standard",
+      effect_group_id: sub.effect_group_id || emotionPresetForEmotion(sub.emotion).effect_group_id || (presets.effect_groups?.[0]?.id || ""),
+      font_preset_id: sub.font_preset_id || emotionPresetForEmotion(sub.emotion).font_preset_id || (presets.font_presets?.[0]?.id || "font_standard"),
       layout_preset_id: presets.layout_presets?.[0]?.id || "layout_bottom_center",
       seed: sub.seed,
       enabled: sub.enabled,
@@ -1300,6 +1331,17 @@ function buildDecorationProjectFromSubtitles(source = null) {
 function currentDecorationEvent() {
   if (!state.decorationProject?.events?.length) return null;
   return state.decorationProject.events.find((item) => item.id === state.decorationSelectionId) || state.decorationProject.events[0] || null;
+}
+
+function effectiveDecorationForEvent(eventItem) {
+  const preset = emotionPresetForEmotion(eventItem?.emotion);
+  return {
+    emotion_preset_id: eventItem?.emotion_preset_id || preset.id,
+    subtitle_style_preset_id: eventItem?.subtitle_style_preset_id || preset.subtitle_style_preset_id || "subtitle_standard",
+    effect_group_id: eventItem?.effect_group_id || preset.effect_group_id || "",
+    font_preset_id: eventItem?.font_preset_id || preset.font_preset_id || "font_standard",
+    layout_preset_id: eventItem?.layout_preset_id || "layout_bottom_center",
+  };
 }
 
 async function loadDecorationProjectFromServer() {
@@ -1366,6 +1408,7 @@ function renderDecorationPage() {
   $("decorationCount").textContent = `${events.length}件`;
   $("effectGroupCount").textContent = `${groups.length}件`;
   $("decorationSelectionLabel").textContent = currentDecorationEvent()?.id || "未選択";
+  $("decorationPreviewState").textContent = `${selectedDecorationSourceKind()} / ${project?.source_srt || "未設定"}`;
   $("decorationPreviewLabel").textContent = state.decorationPreviewUrl ? "生成済み" : "未生成";
   if (previewVideo) {
     previewVideo.src = state.decorationPreviewUrl ? `${state.decorationPreviewUrl}?t=${Date.now()}` : "";
@@ -1381,6 +1424,9 @@ function renderDecorationPage() {
     if (selected) {
       const preview = document.createElement("div");
       preview.className = "decoration-preview";
+      const theme = emotionVisualTheme(selected.emotion);
+      preview.style.background = theme.bg;
+      preview.style.borderColor = theme.border;
       const previewMeta = document.createElement("div");
       previewMeta.textContent = `${fmtTime(selected.start_sec)} - ${fmtTime(selected.end_sec)} / ${selected.scene_id || "sceneなし"} / ${selected.speaker_label || "speakerなし"}`;
       const previewLine = document.createElement("div");
@@ -1388,10 +1434,12 @@ function renderDecorationPage() {
       previewLine.textContent = selected.text || "";
       const chipRow = document.createElement("div");
       chipRow.className = "decoration-chip-list";
-      [selected.emotion || "neutral", selected.subtitle_style_preset_id || "styleなし", selected.effect_group_id || "effectなし"].forEach((label) => {
+      const effective = effectiveDecorationForEvent(selected);
+      [effective.emotion_preset_id || "emotion_presetなし", selected.emotion || "neutral", effective.subtitle_style_preset_id || "styleなし", effective.effect_group_id || "effectなし"].forEach((label, idx) => {
         const chip = document.createElement("span");
         chip.className = "decoration-chip";
         chip.textContent = label;
+        if (idx >= 2) chip.style.borderColor = theme.chip;
         chipRow.appendChild(chip);
       });
       preview.appendChild(previewMeta);
@@ -1408,11 +1456,22 @@ function renderDecorationPage() {
         return label;
       };
       const emotion = presetOptions(
-        (state.presets.emotion_labels || []).map((item) => ({ id: item, name: item })),
+        emotionPresets().map((item) => ({ id: item.emotion || item.id, name: `${item.name || item.id} (${item.emotion || item.id})` })),
         selected.emotion || "neutral",
       );
       emotion.addEventListener("change", () => {
         selected.emotion = emotion.value || "neutral";
+        const preset = emotionPresetForEmotion(selected.emotion);
+        selected.emotion_preset_id = preset.id;
+        if (!selected.subtitle_style_preset_id || selected.subtitle_style_preset_id === "subtitle_standard") {
+          selected.subtitle_style_preset_id = preset.subtitle_style_preset_id || selected.subtitle_style_preset_id;
+        }
+        if (!selected.effect_group_id || selected.effect_group_id === "") {
+          selected.effect_group_id = preset.effect_group_id || selected.effect_group_id;
+        }
+        if (!selected.font_preset_id || selected.font_preset_id === "font_standard") {
+          selected.font_preset_id = preset.font_preset_id || selected.font_preset_id;
+        }
         renderDecorationPage();
       });
       const font = presetOptions(decorationFontPresets(), selected.font_preset_id || "", "");
@@ -1447,6 +1506,17 @@ function renderDecorationPage() {
       enabled.addEventListener("change", () => {
         selected.enabled = enabled.checked;
       });
+      const emotionPreset = presetOptions(emotionPresets(), selected.emotion_preset_id || emotionPresetForEmotion(selected.emotion).id, "");
+      emotionPreset.addEventListener("change", () => {
+        const preset = emotionPresets().find((item) => (item.id || item.emotion) === emotionPreset.value) || emotionPresetForEmotion(selected.emotion);
+        selected.emotion_preset_id = preset.id || emotionPreset.value || "";
+        selected.emotion = preset.emotion || selected.emotion || "neutral";
+        selected.subtitle_style_preset_id = preset.subtitle_style_preset_id || selected.subtitle_style_preset_id;
+        selected.effect_group_id = preset.effect_group_id || selected.effect_group_id;
+        selected.font_preset_id = preset.font_preset_id || selected.font_preset_id;
+        renderDecorationPage();
+      });
+      fields.appendChild(makeField("感情プリセット", emotionPreset));
       fields.appendChild(makeField("感情", emotion));
       fields.appendChild(makeField("フォント", font));
       fields.appendChild(makeField("字幕スタイル", style));
