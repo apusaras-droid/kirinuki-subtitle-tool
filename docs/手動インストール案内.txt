@@ -1,0 +1,77 @@
+手動インストール案内
+
+自動セットアップ（setup.bat / download-runtime.bat / download-ffmpeg.bat）が失敗した場合は、以下を手動で入れてください。
+
+1. Python
+
+- Python 3.10 以上
+- インストール時に「Add Python to PATH」を有効にしてください
+- 確認コマンド:
+  - python --version
+  - pip --version
+
+2. Python依存関係
+
+以下をまとめてインストールしてください。
+
+pip install -r requirements.txt
+
+必要な主なパッケージ:
+
+- fastapi
+- uvicorn[standard]
+- python-multipart
+- pydantic
+- faster-whisper
+- whisperx
+- demucs
+- speechbrain
+
+3. FFmpeg / FFprobe
+
+Windows向けの静的ビルドを入れてください。
+
+推奨:
+- BtbN / FFmpeg-Builds の Windows 64-bit ビルド
+
+必要ファイル:
+- ffmpeg.exe
+- ffprobe.exe
+
+配置方法の例:
+- tools\ffmpeg\bin に展開して PATH を通す
+- もしくは ffmpeg.exe / ffprobe.exe が直接見つかる場所に置く
+
+確認コマンド:
+- ffmpeg -version
+- ffprobe -version
+
+4. whisper.cpp のモデル
+
+以下のモデルを `tools\whisper.cpp\models` に置いてください。
+
+- ggml-large-v3.bin
+- ggml-silero-v5.1.2.bin
+
+必要に応じて追加:
+- ggml-base.bin
+- ggml-small.bin
+- ggml-medium.bin
+
+5. 追加で確認したいこと
+
+- AMD GPU を使う場合は Vulkan ドライバが有効であること
+- Python の仮想環境を使う場合は、起動時に有効化してから実行すること
+- モデルや FFmpeg を入れた後に `setup.bat` を再実行すると、導入済み判定の確認ができます
+
+6. 起動確認
+
+以下が通れば最低限の起動条件は満たしています。
+
+- python --version
+- pip --version
+- ffmpeg -version
+- ffprobe -version
+- setup.bat
+
+問題が残る場合は、`logs/` と `projects/<project_id>/temp/logs/` の内容を確認してください。

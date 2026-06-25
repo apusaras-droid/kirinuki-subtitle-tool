@@ -1,0 +1,19 @@
+Third-Party Notices
+
+1. whisper.cpp
+   - Upstream: https://github.com/ggml-org/whisper.cpp
+   - License: MIT License
+   - Include upstream copyright and license notice with distributed binaries.
+
+2. FFmpeg / FFprobe
+   - Upstream: https://ffmpeg.org/
+   - License: See the exact FFmpeg build configuration used for release.
+   - If the shipped build uses GPL-enabled components, provide source and notices consistent with that build.
+
+3. Python packages
+   - Review `requirements.txt` against the exact release lockfile.
+   - Record the final dependency list and licenses in the release notes.
+
+4. Model files
+   - Review redistribution terms for each bundled model file before release.
+   - Record source, version, and checksum in the release notes.

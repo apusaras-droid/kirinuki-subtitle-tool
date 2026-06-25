@@ -1,0 +1,12 @@
+Source Code Offer
+
+This binary release is accompanied by the corresponding source code for the same version.
+
+Source location:
+<fill in the release source URL or archive URL>
+
+Source archive checksum:
+<fill in the checksum>
+
+Release tag / commit:
+<fill in the tag or commit hash>

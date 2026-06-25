@@ -1,0 +1,11 @@
+This repository is intended to be distributed under the GNU General Public License,
+version 3 or later.
+
+For the authoritative license text, see:
+https://www.gnu.org/licenses/gpl-3.0.html
+
+For the local distribution checklist and third-party notice requirements, see:
+- docs/配布仕様書_GPLv3.md
+- licenses/third_party_notices.txt
+
+SPDX-License-Identifier: GPL-3.0-or-later

@@ -1,0 +1,6 @@
+OS:
+Python:
+FFmpeg:
+FFprobe:
+whisper.cpp:
+

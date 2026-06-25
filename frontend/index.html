@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>切り抜き字幕作成ツール</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>切り抜き字幕作成ツール</h1>
+        <p id="projectLabel">プロジェクト未作成</p>
+      </div>
+        <div class="header-actions">
+          <button id="editorPageBtn" type="button" class="active">編集画面</button>
+          <button id="settingsPageBtn" type="button">設定画面</button>
+          <label class="checkbox-label export-toggle"><input id="burnSubtitles" type="checkbox" />字幕を焼き込む</label>
+          <button id="saveSubtitlesBtn" type="button" disabled>字幕を保存</button>
+          <button id="manualPreviewBtn" type="button" disabled>手動カットを仮出力</button>
+          <button id="previewRenderBtn" type="button" disabled>仮出力を作成</button>
+          <button id="exportBtn" type="button" class="primary" disabled>最終出力</button>
+        </div>
+    </header>
+
+    <main class="layout">
+      <section class="left-pane">
+        <div class="toolbar">
+          <label class="file-picker">
+            <span>動画を選択</span>
+            <input id="videoFile" type="file" accept=".mp4,.mkv,.mov,.webm,video/*" />
+          </label>
+          <input id="projectName" type="text" placeholder="プロジェクト名" />
+          <button id="createProjectBtn" type="button">読み込み</button>
+        </div>
+
+        <div id="videoShellWrap" class="video-shell">
+          <video id="video" controls playsinline></video>
+          <div id="subtitleOverlay" class="subtitle-overlay"></div>
+        </div>
+
+        <div id="editorControlsWrap" class="range-grid">
+          <label>
+            開始時間
+            <input id="startTime" type="text" value="00:00:00.000" />
+          </label>
+          <button id="setStartBtn" type="button">開始位置に設定</button>
+          <label>
+            終了時間
+            <input id="endTime" type="text" value="00:00:00.000" />
+          </label>
+          <button id="setEndBtn" type="button">終了位置に設定</button>
+        </div>
+
+        <section class="source-range-panel">
+          <div class="section-title">
+            <h2>編集対象区間</h2>
+            <span id="sourceRangeCount">1件</span>
+          </div>
+          <div class="range-tools">
+            <label>自動分割分数<input id="splitMinutes" type="number" value="20" min="10" max="30" step="5" /></label>
+            <button id="split10Btn" type="button">10分で分割</button>
+            <button id="split15Btn" type="button">15分で分割</button>
+            <button id="split20Btn" type="button">20分で分割</button>
+            <button id="split30Btn" type="button">30分で分割</button>
+            <button id="applyManualRangeBtn" type="button">現在の開始/終了を区間に反映</button>
+          </div>
+          <div id="sourceRangeList" class="source-range-list"></div>
+        </section>
+
+        <div id="editorModeWrap" class="mode-row">
+          <button id="sourceModeBtn" type="button" class="active">元動画で確認</button>
+          <button id="plannedModeBtn" type="button">完成予定を確認</button>
+          <button id="renderedModeBtn" type="button">仮出力を確認</button>
+        </div>
+
+        <div id="processWrap" class="process-grid">
+          <button id="probeBtn" type="button" disabled>動画情報取得</button>
+          <button id="extractBtn" type="button" disabled>音声を抽出</button>
+          <button id="transcribeBtn" type="button" disabled>文字起こしを実行</button>
+          <button id="silenceBtn" type="button" disabled>無音区間を検出</button>
+          <button id="planBtn" type="button" disabled>カット案を作成</button>
+        </div>
+
+        <div id="workspaceWrap" class="mode-row editor-mode-row">
+          <button id="timelineViewBtn" type="button" class="active">タイムライン編集</button>
+          <button id="waveformViewBtn" type="button">波形編集</button>
+        </div>
+
+        <section id="timelinePanel" class="timeline-panel">
+          <div class="section-title">
+            <h2>タイムライン</h2>
+            <span id="timeReadout">00:00:00.000</span>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </section>
+
+        <section id="waveformPanel" class="waveform-panel hidden-panel">
+          <div class="section-title">
+            <h2>波形編集</h2>
+            <span id="waveformState">未生成</span>
+          </div>
+          <div class="waveform-toolbar">
+            <button id="waveformPlayPauseBtn" type="button">再生/停止</button>
+            <button id="waveformSourceModeBtn" type="button" class="active">元動画</button>
+            <button id="waveformPlannedModeBtn" type="button">完成予定</button>
+            <button id="waveformRenderedModeBtn" type="button">仮出力</button>
+          </div>
+          <div class="waveform-toolbar">
+            <button id="waveformCutStartBtn" type="button">カット開始</button>
+            <button id="waveformCutEndBtn" type="button">カット終了</button>
+            <button id="waveformClearBtn" type="button">選択解除</button>
+            <button id="waveformDeleteLastBtn" type="button">最後を削除</button>
+            <span id="waveformDraftState" class="waveform-draft-state">未選択</span>
+          </div>
+          <div id="waveformStage" class="waveform-stage">
+            <img id="waveformPreview" alt="waveform preview" />
+            <div id="waveformOverlay" class="waveform-overlay"></div>
+          </div>
+          <div class="waveform-intervals">
+            <div>
+              <div class="section-title"><h3>手動カット</h3><span id="manualCutCount">0件</span></div>
+              <div id="manualCutList" class="interval-list"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <aside class="right-pane">
+        <section class="info-panel">
+          <h2>動画情報</h2>
+          <pre id="videoInfo">未取得</pre>
+        </section>
+        <section class="subtitle-panel">
+          <div class="section-title">
+            <h2>字幕編集</h2>
+            <span id="subtitleCount">0件</span>
+          </div>
+          <div id="subtitleList" class="subtitle-list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <section id="settingsPage" class="settings-page hidden-panel">
+      <div class="settings-page-header">
+        <div>
+          <h2>設定</h2>
+          <p>Whisper と字幕の見た目を調整する。</p>
+        </div>
+        <button id="settingsBackBtn" type="button" class="primary">編集画面へ戻る</button>
+      </div>
+      <div class="settings-page-body">
+        <section class="settings-panel">
+          <div class="settings-section">
+            <h3>文字起こし</h3>
+            <div class="settings-grid">
+              <label>計算プロファイル<select id="computeProfile" title="gpu は文字起こしだけ厳格に扱い、前処理は CPU 許容です"><option value="auto" selected>auto</option><option value="cpu">cpu</option><option value="gpu">gpu</option></select></label>
+              <label>Whisper engine<select id="engine"><option value="whisper.cpp" selected>whisper.cpp AMD</option><option value="openai-whisper">openai-whisper</option><option value="faster-whisper">faster-whisper</option></select></label>
+              <label>モデル<select id="model">
+                <option value="base">base</option>
+                <option value="small">small</option>
+                <option value="medium">medium</option>
+                <option value="large-v3" selected>large-v3</option>
+              </select></label>
+              <label>言語<input id="language" type="text" value="ja" /></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>音声解析</h3>
+            <div class="settings-grid">
+              <label class="checkbox-label"><input id="useVad" type="checkbox" checked /> VADを使う</label>
+              <label class="checkbox-label"><input id="voiceIsolationEnabled" type="checkbox" /> 声抽出を使う</label>
+              <label class="checkbox-label"><input id="useIsolatedVoiceForVad" type="checkbox" /> 声抽出音声をVADに使う</label>
+              <label class="checkbox-label"><input id="useIsolatedVoiceForWhisper" type="checkbox" /> 声抽出音声をWhisperに使う</label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>字幕焼き込み</h3>
+            <div class="settings-grid">
+              <label>字幕フォント<input id="subtitleFontName" type="text" value="Meiryo" /></label>
+              <label>字幕サイズ<input id="subtitleFontSize" type="number" value="42" step="1" min="8" /></label>
+              <label>字幕の黒縁<input id="subtitleOutlineWidth" type="number" value="2" step="1" min="0" /></label>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <footer class="status-bar">
+      <span id="status">待機中</span>
+      <span id="paths"></span>
+    </footer>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

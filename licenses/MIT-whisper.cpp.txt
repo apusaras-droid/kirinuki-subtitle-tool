@@ -1,0 +1,11 @@
+whisper.cpp Notice
+
+Upstream:
+https://github.com/ggml-org/whisper.cpp
+
+License:
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Include the upstream copyright and license notice with any distributed binary package.

@@ -1,0 +1,30 @@
+{
+  "gpu_autocut": {
+    "compute_profile": "gpu",
+    "engine": "whisper.cpp",
+    "model": "large-v3",
+    "detection_mode": "vad",
+    "auto_cut": true
+  },
+  "gpu_nocut": {
+    "compute_profile": "gpu",
+    "engine": "whisper.cpp",
+    "model": "large-v3",
+    "detection_mode": "vad",
+    "auto_cut": false
+  },
+  "cpu_autocut": {
+    "compute_profile": "cpu",
+    "engine": "whisper.cpp",
+    "model": "large-v3",
+    "detection_mode": "vad",
+    "auto_cut": true
+  },
+  "cpu_nocut": {
+    "compute_profile": "cpu",
+    "engine": "whisper.cpp",
+    "model": "large-v3",
+    "detection_mode": "vad",
+    "auto_cut": false
+  }
+}

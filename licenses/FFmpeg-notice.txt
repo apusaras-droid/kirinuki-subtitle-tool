@@ -1,0 +1,12 @@
+FFmpeg / FFprobe Notice
+
+This release includes FFmpeg-related components only if the release package contains them.
+
+Upstream:
+https://ffmpeg.org/
+
+Licensing:
+See the exact FFmpeg build configuration used for the release.
+If the shipped build uses GPL-enabled components, the release must comply with the applicable GPL terms.
+
+Record the exact build flags, source revision, and source offer in the release notes.

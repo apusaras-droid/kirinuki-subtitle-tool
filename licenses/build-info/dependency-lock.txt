@@ -1,0 +1,1 @@
+<fill in the exact dependency versions used for the release>

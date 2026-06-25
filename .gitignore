@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+projects/
+.release/
+release/
+logs/
+temp/
+temp_analysis/
+release_test*/
+tools/ffmpeg/
+tools/whisper.cpp/bin/
+tools/whisper.cpp-src/
+.pytest_cache/
+tools/whisper.cpp/models/*.bin
