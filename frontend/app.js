@@ -1253,6 +1253,20 @@ function decorationEffectGroups() {
   }));
 }
 
+function decorationEffectLibrary() {
+  const presets = state.presets.decoration_presets || {};
+  const library = presets.effect_library || [];
+  return library.length ? library : [
+    { id: "bubble_round", name: "丸吹き出し" },
+    { id: "bubble_soft", name: "ソフト吹き出し" },
+    { id: "sparkle", name: "きらめき" },
+    { id: "pop_in", name: "ポップイン" },
+    { id: "shake", name: "揺れ" },
+    { id: "float_in", name: "浮遊" },
+    { id: "heart", name: "ハート" },
+  ];
+}
+
 function emotionPresets() {
   return (state.presets.emotion_presets || []).map((item) => ({ ...item }));
 }
@@ -1583,31 +1597,75 @@ function renderDecorationPage() {
     description.style.minHeight = "48px";
     const effectRow = document.createElement("div");
     effectRow.className = "effect-group-effects";
-    const effectInput = document.createElement("input");
-    effectInput.value = (group.effects || []).join(", ");
-    effectInput.placeholder = "effect_a, effect_b";
-    effectInput.style.minWidth = "240px";
+    const effectSelect = presetOptions(decorationEffectLibrary(), "", "");
+    effectSelect.style.minWidth = "220px";
     const controls = document.createElement("div");
     controls.className = "decoration-toolbar";
+    const effectList = document.createElement("div");
+    effectList.className = "decoration-chip-list";
+    const renderEffectChips = () => {
+      effectList.textContent = "";
+      for (const effect of group.effects || []) {
+        const chip = document.createElement("span");
+        chip.className = "decoration-chip";
+        chip.textContent = effect;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.style.marginLeft = "6px";
+        remove.addEventListener("click", () => {
+          group.effects = (group.effects || []).filter((item) => item !== effect);
+          renderDecorationPage();
+        });
+        chip.appendChild(remove);
+        effectList.appendChild(chip);
+      }
+    };
+    renderEffectChips();
+    const addEffectBtn = document.createElement("button");
+    addEffectBtn.type = "button";
+    addEffectBtn.textContent = "追加";
+    addEffectBtn.addEventListener("click", () => {
+      const nextEffect = effectSelect.value || "";
+      if (!nextEffect) return;
+      const nextEffects = new Set(group.effects || []);
+      nextEffects.add(nextEffect);
+      group.effects = Array.from(nextEffects);
+      renderDecorationPage();
+    });
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.textContent = "保存";
     saveBtn.addEventListener("click", () => {
       const target = state.decorationProject?.effect_groups || [];
-      const nextEffects = effectInput.value.split(",").map((item) => item.trim()).filter(Boolean);
       for (let i = 0; i < target.length; i += 1) {
         if (target[i].id === group.id) {
           target[i] = {
             ...target[i],
             name: nameInput.value.trim() || target[i].name || target[i].id,
             description: description.value.trim(),
-            effects: nextEffects,
+            effects: [...(group.effects || [])],
           };
         }
       }
-      if (state.decorationProject) {
-        state.decorationProject.effect_groups = target;
-      }
+      if (state.decorationProject) state.decorationProject.effect_groups = target;
+      renderDecorationPage();
+    });
+    const duplicateBtn = document.createElement("button");
+    duplicateBtn.type = "button";
+    duplicateBtn.textContent = "複製";
+    duplicateBtn.addEventListener("click", () => {
+      if (!state.decorationProject) return;
+      const nextId = `effect_group_${String(Date.now()).slice(-8)}`;
+      state.decorationProject.effect_groups = [
+        ...(state.decorationProject.effect_groups || []),
+        {
+          id: nextId,
+          name: `${nameInput.value.trim() || group.name || group.id} copy`,
+          description: description.value.trim(),
+          effects: [...(group.effects || [])],
+        },
+      ];
       renderDecorationPage();
     });
     const applyBtn = document.createElement("button");
@@ -1631,18 +1689,15 @@ function renderDecorationPage() {
       renderDecorationPage();
     });
     controls.appendChild(saveBtn);
+    controls.appendChild(duplicateBtn);
     controls.appendChild(applyBtn);
     controls.appendChild(removeBtn);
-    for (const effect of group.effects || []) {
-      const chip = document.createElement("span");
-      chip.className = "decoration-chip";
-      chip.textContent = effect;
-      effectRow.appendChild(chip);
-    }
+    effectRow.appendChild(effectSelect);
+    effectRow.appendChild(addEffectBtn);
+    effectRow.appendChild(effectList);
     item.appendChild(header);
     item.appendChild(nameInput);
     item.appendChild(description);
-    item.appendChild(effectInput);
     item.appendChild(controls);
     item.appendChild(effectRow);
     groupList.appendChild(item);

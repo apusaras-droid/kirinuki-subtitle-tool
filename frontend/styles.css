@@ -349,6 +349,29 @@ label {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.effect-group-item .effect-group-effects select {
+  width: auto;
+  min-width: 180px;
+}
+
+.effect-group-item .effect-group-effects .decoration-chip-list {
+  width: 100%;
+}
+
+.effect-group-item .effect-group-effects .decoration-chip {
+  display: inline-flex;
+  align-items: center;
+}
+
+.effect-group-item .effect-group-effects .decoration-chip button {
+  min-height: 20px;
+  padding: 0 5px;
+  border: none;
+  background: transparent;
+  color: inherit;
 }
 
 .decoration-chip-list {

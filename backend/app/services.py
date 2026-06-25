@@ -725,6 +725,15 @@ def load_scene_catalog() -> list[dict]:
 
 def load_decoration_presets() -> dict:
     fallback = {
+        "effect_library": [
+            {"id": "bubble_round", "name": "丸吹き出し"},
+            {"id": "bubble_soft", "name": "ソフト吹き出し"},
+            {"id": "sparkle", "name": "きらめき"},
+            {"id": "pop_in", "name": "ポップイン"},
+            {"id": "shake", "name": "揺れ"},
+            {"id": "float_in", "name": "浮遊"},
+            {"id": "heart", "name": "ハート"},
+        ],
         "font_presets": [
             {
                 "id": "font_standard",
