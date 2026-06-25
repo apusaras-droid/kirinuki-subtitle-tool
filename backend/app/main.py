@@ -29,7 +29,10 @@ from .services import (
     resolve_project_path,
     require_project,
     load_project_edit_plan,
+    preset_catalog,
+    build_scene_catalog_from_subtitles,
     transcribe_audio,
+    update_project_info,
 )
 from .srt import write_srt
 
@@ -146,6 +149,17 @@ class DraftRenderRequest(BaseModel):
     burn_subtitles: bool = False
 
 
+class ProjectSettingsRequest(BaseModel):
+    project_id: str
+    default_emotion_preset_id: str | None = None
+    default_subtitle_style_preset_id: str | None = None
+
+
+class ProjectScenesRequest(BaseModel):
+    project_id: str
+    scenes: list[dict[str, Any]]
+
+
 @app.post("/api/projects")
 async def create_project(file: UploadFile = File(...), project_name: str | None = Form(default=None)):
     return await create_project_from_upload(file, project_name)
@@ -164,6 +178,28 @@ def get_project(project_id: str):
     return data
 
 
+@app.post("/api/projects/settings")
+def update_project_settings(req: ProjectSettingsRequest):
+    updates: dict[str, object] = {}
+    current = project_info(req.project_id)
+    ui_state = dict(current.get("ui_state") or {})
+    if req.default_emotion_preset_id is not None:
+        ui_state["default_emotion_preset_id"] = req.default_emotion_preset_id
+    if req.default_subtitle_style_preset_id is not None:
+        ui_state["default_subtitle_style_preset_id"] = req.default_subtitle_style_preset_id
+    updates["ui_state"] = ui_state
+    updated = update_project_info(req.project_id, updates)
+    return {"project": updated}
+
+
+@app.post("/api/projects/scenes")
+def update_project_scenes(req: ProjectScenesRequest):
+    current = project_info(req.project_id)
+    updates = {"scenes": req.scenes}
+    updated = update_project_info(req.project_id, updates)
+    return {"project": updated}
+
+
 @app.get("/api/projects/{project_id}/media/{folder}/{filename}")
 def get_project_media(project_id: str, folder: str, filename: str):
     if folder not in {"source", "preview", "output", "analysis"}:
@@ -179,6 +215,11 @@ def get_project_media(project_id: str, folder: str, filename: str):
 @app.get("/api/version")
 def api_version():
     return version_info()
+
+
+@app.get("/api/presets")
+def api_presets():
+    return preset_catalog()
 
 
 @app.post("/api/video/probe")
@@ -248,6 +289,7 @@ def api_update_subtitles(req: SubtitleUpdateRequest):
         raise HTTPException(status_code=404, detail="edit_plan.jsonが見つかりません")
     plan = load_project_edit_plan(req.project_id)
     plan["subtitles"] = req.subtitles
+    plan["scenes"] = build_scene_catalog_from_subtitles(req.subtitles, plan.get("scenes") or [])
     if req.speaker_roster is not None:
         plan["speaker_roster"] = req.speaker_roster
     else:
@@ -255,6 +297,7 @@ def api_update_subtitles(req: SubtitleUpdateRequest):
     atomic_write_json(path, plan, backup=True)
     srt_path = resolve_project_path(req.project_id, "subtitles", "edited.srt")
     write_srt(req.subtitles, srt_path)
+    update_project_info(req.project_id, {"scenes": plan.get("scenes", [])})
     return {"srt_path": str(srt_path), "edit_plan": plan}
 
 
@@ -267,6 +310,7 @@ def api_update_transcript(req: TranscriptUpdateRequest):
     transcript["subtitles"] = req.subtitles
     transcript["raw_subtitles"] = transcript.get("raw_subtitles", req.subtitles)
     transcript["aligned_subtitles"] = transcript.get("aligned_subtitles", req.subtitles)
+    transcript["scenes"] = build_scene_catalog_from_subtitles(req.subtitles, transcript.get("scenes") or [])
     if req.speaker_roster is not None:
         transcript["speaker_roster"] = req.speaker_roster
     else:
@@ -274,6 +318,7 @@ def api_update_transcript(req: TranscriptUpdateRequest):
     atomic_write_json(path, transcript, backup=True)
     srt_path = resolve_project_path(req.project_id, "subtitles", "edited.srt")
     write_srt(req.subtitles, srt_path)
+    update_project_info(req.project_id, {"scenes": transcript.get("scenes", [])})
     return {"transcript_path": str(path), "srt_path": str(srt_path), "transcript": transcript}
 
 

@@ -23,6 +23,18 @@ const state = {
   waveformUrl: null,
   videoInfo: null,
   processingSummary: null,
+  videoInfoExpanded: false,
+  projectSettings: {
+    default_emotion_preset_id: "emotion_neutral",
+    default_subtitle_style_preset_id: "subtitle_standard",
+  },
+  projectScenes: [],
+  presets: {
+    emotion_presets: [],
+    subtitle_style_presets: [],
+    scenes: [],
+    emotion_labels: ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
+  },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -44,6 +56,321 @@ function setProjectReady(ready) {
   }
 }
 
+function subtitleItems() {
+  return state.editPlan?.subtitles || state.transcript?.subtitles || [];
+}
+
+function currentSubtitleById(id) {
+  return subtitleItems().find((sub) => sub.id === id) || null;
+}
+
+function selectedSubtitle() {
+  return state.selectedSubtitleId ? currentSubtitleById(state.selectedSubtitleId) : null;
+}
+
+function presetOptions(items, selectedValue, placeholder = "") {
+  const select = document.createElement("select");
+  if (placeholder) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = placeholder;
+    select.appendChild(option);
+  }
+  for (const item of items || []) {
+    const option = document.createElement("option");
+    option.value = item.id || "";
+    option.textContent = item.name || item.id || "";
+    select.appendChild(option);
+  }
+  select.value = selectedValue || "";
+  return select;
+}
+
+function selectedEmotionLabel() {
+  const sub = selectedSubtitle();
+  return sub?.emotion || "neutral";
+}
+
+function selectedStylePresetId() {
+  const sub = selectedSubtitle();
+  return sub?.subtitle_style_preset_id || "";
+}
+
+function updatePresetSelectors() {
+  const emotionSelect = $("defaultEmotionPreset");
+  const styleSelect = $("defaultSubtitleStylePreset");
+  if (!emotionSelect || !styleSelect) return;
+  const emotionPresets = state.presets.emotion_presets || [];
+  const stylePresets = state.presets.subtitle_style_presets || [];
+  emotionSelect.textContent = "";
+  const emotionItems = [
+    ...emotionPresets.map((item) => ({ id: item.emotion || item.id, name: `${item.name || item.id} (${item.emotion || item.id})` })),
+  ];
+  for (const opt of emotionItems) {
+    const option = document.createElement("option");
+    option.value = opt.id;
+    option.textContent = opt.name;
+    emotionSelect.appendChild(option);
+  }
+  const defaultEmotion = state.projectSettings?.default_emotion_preset_id || selectedEmotionLabel();
+  if (!emotionSelect.value) emotionSelect.value = defaultEmotion;
+  styleSelect.textContent = "";
+  for (const item of stylePresets) {
+    const option = document.createElement("option");
+    option.value = item.id || "";
+    option.textContent = item.name || item.id || "";
+    styleSelect.appendChild(option);
+  }
+  if (!styleSelect.value) {
+    styleSelect.value = state.projectSettings?.default_subtitle_style_preset_id || selectedStylePresetId() || (stylePresets[0]?.id || "");
+  }
+}
+
+function applyDefaultPresetToSubtitle(sub) {
+  if (!sub) return;
+  const emotion = $("defaultEmotionPreset")?.value || "neutral";
+  const style = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
+  sub.emotion = emotion;
+  sub.subtitle_style_preset_id = style;
+}
+
+async function loadPresets() {
+  const data = await api("/api/presets", { method: "GET" });
+  state.presets = {
+    emotion_presets: data.emotion_presets || [],
+    subtitle_style_presets: data.subtitle_style_presets || [],
+    scenes: data.scenes || [],
+    emotion_labels: data.emotion_labels || ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
+  };
+  updatePresetSelectors();
+  renderSubtitles();
+  renderVideoInfo();
+}
+
+function syncProjectScenesFromSubtitles() {
+  const byId = new Map();
+  for (const scene of state.projectScenes || []) {
+    const sceneId = String(scene.id || "").trim();
+    if (!sceneId) continue;
+    byId.set(sceneId, {
+      id: sceneId,
+      start_sec: Number(scene.start_sec ?? 0) || 0,
+      end_sec: Number(scene.end_sec ?? 0) || 0,
+      emotion: scene.emotion || "neutral",
+      effect_group_id: scene.effect_group_id || "",
+      subtitle_style_preset_id: scene.subtitle_style_preset_id || "",
+      comment_ids: [...(scene.comment_ids || [])],
+    });
+  }
+  for (const sub of subtitleItems()) {
+    const sceneId = String(sub.scene_id || "").trim();
+    if (!sceneId) continue;
+    if (!byId.has(sceneId)) {
+      byId.set(sceneId, {
+        id: sceneId,
+        start_sec: Number(sub.start_sec ?? sub.output_start_sec ?? 0) || 0,
+        end_sec: Number(sub.end_sec ?? sub.output_end_sec ?? 0) || 0,
+        emotion: sub.emotion || "neutral",
+        effect_group_id: sub.effect_group_id || "",
+        subtitle_style_preset_id: sub.subtitle_style_preset_id || "",
+        comment_ids: [],
+      });
+    }
+    const scene = byId.get(sceneId);
+    scene.comment_ids.push(sub.id);
+    if (!scene.emotion && sub.emotion) scene.emotion = sub.emotion;
+    if (!scene.subtitle_style_preset_id && sub.subtitle_style_preset_id) scene.subtitle_style_preset_id = sub.subtitle_style_preset_id;
+    if (!scene.effect_group_id && sub.effect_group_id) scene.effect_group_id = sub.effect_group_id;
+  }
+  state.projectScenes = Array.from(byId.values()).sort((a, b) => a.start_sec - b.start_sec || a.end_sec - b.end_sec);
+}
+
+async function saveProjectScenes() {
+  if (!state.projectId) return;
+  syncProjectScenesFromSubtitles();
+  const data = await api("/api/projects/scenes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, scenes: state.projectScenes }),
+  });
+  state.projectScenes = data.project?.scenes || state.projectScenes;
+}
+
+async function persistCurrentSubtitles() {
+  if (!state.projectId) return;
+  const subtitles = subtitleItems();
+  if (!subtitles.length) throw new Error("先に字幕を生成してください");
+  const endpoint = state.editPlanPath && state.editPlan ? "/api/subtitles/update" : "/api/transcript/update";
+  const data = await api(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, subtitles }),
+  });
+  if (data.edit_plan) {
+    state.editPlan = data.edit_plan;
+  } else if (data.transcript) {
+    state.transcript = {
+      ...state.transcript,
+      ...data.transcript,
+    };
+  }
+  return data;
+}
+
+function addManualSceneFromCurrentRange() {
+  const range = currentRange();
+  const startSec = Math.min(range.start_sec, range.end_sec);
+  const endSec = Math.max(range.start_sec, range.end_sec);
+  const sceneId = `scene_${String(Date.now()).slice(-8)}`;
+  const emotion = $("defaultEmotionPreset")?.value || "neutral";
+  const style = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
+  state.projectScenes = [
+    ...(state.projectScenes || []),
+    {
+      id: sceneId,
+      start_sec: roundTime(startSec),
+      end_sec: roundTime(endSec),
+      emotion,
+      effect_group_id: "",
+      subtitle_style_preset_id: style,
+      comment_ids: [],
+    },
+  ].sort((a, b) => a.start_sec - b.start_sec || a.end_sec - b.end_sec);
+  saveProjectScenes().catch(() => {});
+  renderScenes();
+}
+
+function resyncScenesFromSubtitles() {
+  syncProjectScenesFromSubtitles();
+  saveProjectScenes().catch(() => {});
+  renderScenes();
+}
+
+function reassignSubtitlesToScenes() {
+  const scenes = ((state.projectScenes || []).length ? state.projectScenes : state.presets.scenes || []).filter((scene) => scene.id);
+  if (!scenes.length) return { reassigned: 0 };
+  let reassigned = 0;
+  for (const sub of subtitleItems()) {
+    const start = Number(sub.start_sec ?? sub.output_start_sec ?? 0) || 0;
+    const end = Number(sub.end_sec ?? sub.output_end_sec ?? start) || start;
+    let bestScene = null;
+    let bestScore = -1;
+    let bestGap = Number.POSITIVE_INFINITY;
+    for (const scene of scenes) {
+      const sceneStart = Number(scene.start_sec) || 0;
+      const sceneEnd = Number(scene.end_sec) || sceneStart;
+      const overlap = Math.min(end, sceneEnd) - Math.max(start, sceneStart);
+      const gap = overlap > 0 ? 0 : Math.max(sceneStart - end, start - sceneEnd);
+      const score = overlap > 0 ? overlap : -gap;
+      if (score > bestScore || (score === bestScore && gap < bestGap)) {
+        bestScore = score;
+        bestGap = gap;
+        bestScene = scene;
+      }
+    }
+    if (bestScene) {
+      sub.scene_id = bestScene.id;
+      if (bestScene.emotion) sub.emotion = bestScene.emotion;
+      if (bestScene.subtitle_style_preset_id) sub.subtitle_style_preset_id = bestScene.subtitle_style_preset_id;
+      reassigned += 1;
+    }
+  }
+  syncProjectScenesFromSubtitles();
+  return { reassigned };
+}
+
+function sceneListForEditing() {
+  return sceneCatalog().slice().sort((a, b) => a.start_sec - b.start_sec || a.end_sec - b.end_sec);
+}
+
+function persistSceneAndSubtitleChanges() {
+  syncProjectScenesFromSubtitles();
+  saveProjectScenes().catch(() => {});
+  persistCurrentSubtitles().catch(() => {});
+  renderSubtitles();
+  renderScenes();
+  updateOverlay();
+}
+
+function splitSceneEntry(scene) {
+  const scenes = sceneListForEditing();
+  const index = scenes.findIndex((item) => item.id === scene.id);
+  if (index < 0) return;
+  const current = scenes[index];
+  const splitAt = Math.max(current.start_sec + 0.05, Math.min(current.end_sec - 0.05, (current.start_sec + current.end_sec) / 2));
+  const newId = `scene_${String(Date.now()).slice(-8)}`;
+  const nextScene = {
+    id: newId,
+    start_sec: roundTime(splitAt),
+    end_sec: roundTime(current.end_sec),
+    emotion: current.emotion || "neutral",
+    effect_group_id: current.effect_group_id || "",
+    subtitle_style_preset_id: current.subtitle_style_preset_id || "",
+    comment_ids: [],
+  };
+  const updatedCurrent = {
+    ...current,
+    end_sec: roundTime(splitAt),
+    comment_ids: [],
+  };
+  const nextProjectScenes = (state.projectScenes || []).filter((item) => item.id !== current.id);
+  nextProjectScenes.push(updatedCurrent, nextScene);
+  state.projectScenes = nextProjectScenes.sort((a, b) => a.start_sec - b.start_sec || a.end_sec - b.end_sec);
+  for (const sub of subtitleItems()) {
+    const start = Number(sub.start_sec ?? sub.output_start_sec ?? 0) || 0;
+    if (sub.scene_id === current.id && start >= splitAt) {
+      sub.scene_id = newId;
+      sub.emotion = nextScene.emotion;
+      sub.subtitle_style_preset_id = nextScene.subtitle_style_preset_id;
+    }
+  }
+  persistSceneAndSubtitleChanges();
+}
+
+function mergeSceneEntry(scene, direction = "prev") {
+  const scenes = sceneListForEditing();
+  const index = scenes.findIndex((item) => item.id === scene.id);
+  if (index < 0) return;
+  const neighbor = direction === "prev" ? scenes[index - 1] : scenes[index + 1];
+  if (!neighbor) return;
+  const target = direction === "prev" ? scene : neighbor;
+  const source = direction === "prev" ? neighbor : scene;
+  const merged = {
+    ...target,
+    start_sec: roundTime(Math.min(Number(target.start_sec) || 0, Number(source.start_sec) || 0)),
+    end_sec: roundTime(Math.max(Number(target.end_sec) || 0, Number(source.end_sec) || 0)),
+    emotion: target.emotion || source.emotion || "neutral",
+    effect_group_id: target.effect_group_id || source.effect_group_id || "",
+    subtitle_style_preset_id: target.subtitle_style_preset_id || source.subtitle_style_preset_id || "",
+    comment_ids: [...new Set([...(target.comment_ids || []), ...(source.comment_ids || [])])],
+  };
+  state.projectScenes = (state.projectScenes || []).filter((item) => item.id !== target.id && item.id !== source.id);
+  state.projectScenes.push(merged);
+  for (const sub of subtitleItems()) {
+    if (sub.scene_id === source.id) {
+      sub.scene_id = target.id;
+      sub.emotion = merged.emotion;
+      sub.subtitle_style_preset_id = merged.subtitle_style_preset_id;
+    }
+  }
+  persistSceneAndSubtitleChanges();
+}
+
+async function saveProjectSettings() {
+  if (!state.projectId) return;
+  const payload = {
+    project_id: state.projectId,
+    default_emotion_preset_id: $("defaultEmotionPreset")?.value || "emotion_neutral",
+    default_subtitle_style_preset_id: $("defaultSubtitleStylePreset")?.value || "subtitle_standard",
+  };
+  const data = await api("/api/projects/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.projectSettings = data.project?.ui_state || state.projectSettings;
+}
+
 function renderVideoInfo() {
   const parts = [];
   if (state.videoInfo) {
@@ -53,6 +380,237 @@ function renderVideoInfo() {
     parts.push(`処理情報\n${JSON.stringify(state.processingSummary, null, 2)}`);
   }
   $("videoInfo").textContent = parts.length ? parts.join("\n\n") : "未取得";
+  const body = $("videoInfoBody");
+  const toggle = $("videoInfoToggleBtn");
+  if (body) body.classList.toggle("hidden-panel", !state.videoInfoExpanded);
+  if (toggle) toggle.textContent = state.videoInfoExpanded ? "折りたたむ" : "詳細を表示";
+}
+
+function emotionLabelForScene(sceneId, subtitles) {
+  const found = (subtitles || []).find((sub) => sub.scene_id === sceneId && sub.emotion);
+  return found?.emotion || "neutral";
+}
+
+function stylePresetForScene(sceneId, subtitles) {
+  const found = (subtitles || []).find((sub) => sub.scene_id === sceneId && sub.subtitle_style_preset_id);
+  return found?.subtitle_style_preset_id || "";
+}
+
+function sceneCatalog() {
+  const subtitles = subtitleItems();
+  const byId = new Map();
+  for (const scene of state.projectScenes || []) {
+    const sceneId = String(scene.id || "").trim();
+    if (!sceneId) continue;
+    byId.set(sceneId, {
+      id: sceneId,
+      start_sec: Number(scene.start_sec ?? 0) || 0,
+      end_sec: Number(scene.end_sec ?? 0) || 0,
+      emotion: scene.emotion || "neutral",
+      effect_group_id: scene.effect_group_id || "",
+      subtitle_style_preset_id: scene.subtitle_style_preset_id || "",
+      comment_ids: [...(scene.comment_ids || [])],
+    });
+  }
+  for (const sub of subtitles) {
+    const sceneId = sub.scene_id || "";
+    if (!sceneId) continue;
+    if (!byId.has(sceneId)) {
+      byId.set(sceneId, {
+        id: sceneId,
+        start_sec: Number(sub.start_sec ?? sub.output_start_sec ?? 0) || 0,
+        end_sec: Number(sub.end_sec ?? sub.output_end_sec ?? 0) || 0,
+        comment_ids: [],
+      });
+    }
+    const scene = byId.get(sceneId);
+    scene.comment_ids.push(sub.id);
+    if (!scene.emotion && sub.emotion) scene.emotion = sub.emotion;
+    if (!scene.subtitle_style_preset_id && sub.subtitle_style_preset_id) scene.subtitle_style_preset_id = sub.subtitle_style_preset_id;
+  }
+  const presetScenes = state.presets.scenes || [];
+  for (const scene of presetScenes) {
+    if (!byId.has(scene.id)) {
+      byId.set(scene.id, { ...scene, comment_ids: scene.comment_ids || [] });
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => a.start_sec - b.start_sec || a.end_sec - b.end_sec);
+}
+
+function renderScenes() {
+  const list = $("sceneList");
+  if (!list) return;
+  const scenes = sceneCatalog();
+  $("sceneCount").textContent = `${scenes.length}件`;
+  list.textContent = "";
+  scenes.forEach((scene) => {
+    const item = document.createElement("div");
+    item.className = `scene-item${scene.id === (selectedSubtitle()?.scene_id || "") ? " selected" : ""}`;
+    const idx = document.createElement("strong");
+    idx.textContent = scene.id;
+    const meta = document.createElement("div");
+    meta.className = "scene-meta";
+    const title = document.createElement("span");
+    title.textContent = `${fmtTime(scene.start_sec)} - ${fmtTime(scene.end_sec)}`;
+    const subline = document.createElement("small");
+    subline.textContent = `感情: ${emotionLabelForScene(scene.id, subtitleItems())} / スタイル: ${stylePresetForScene(scene.id, subtitleItems()) || "-"}`;
+    meta.appendChild(title);
+    meta.appendChild(subline);
+    const action = document.createElement("span");
+    action.textContent = `${scene.comment_ids?.length || 0}件`;
+    const bounds = document.createElement("div");
+    bounds.className = "scene-bounds";
+    const startInput = document.createElement("input");
+    startInput.dataset.sceneField = "start_sec";
+    startInput.value = fmtTime(scene.start_sec);
+    startInput.placeholder = "start";
+    const endInput = document.createElement("input");
+    endInput.dataset.sceneField = "end_sec";
+    endInput.value = fmtTime(scene.end_sec);
+    endInput.placeholder = "end";
+    const updateBounds = document.createElement("button");
+    updateBounds.type = "button";
+    updateBounds.textContent = "区間保存";
+    updateBounds.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const nextStart = parseTime(startInput.value);
+      const nextEnd = parseTime(endInput.value);
+      const safeStart = Math.min(nextStart, nextEnd);
+      const safeEnd = Math.max(nextStart, nextEnd);
+      state.projectScenes = (state.projectScenes || []).map((item) =>
+        item.id === scene.id
+          ? { ...item, start_sec: roundTime(safeStart), end_sec: roundTime(safeEnd) }
+          : item,
+      );
+      syncProjectScenesFromSubtitles();
+      saveProjectScenes().catch(() => {});
+      renderScenes();
+    });
+    bounds.appendChild(startInput);
+    bounds.appendChild(endInput);
+    bounds.appendChild(updateBounds);
+    const sceneControls = document.createElement("div");
+    sceneControls.className = "scene-controls";
+    const sceneEmotion = presetOptions(
+      (state.presets.emotion_labels || []).map((emotion) => ({ id: emotion, name: emotion })),
+      scene.emotion || "neutral",
+      "",
+    );
+    sceneEmotion.dataset.sceneField = "emotion";
+    const sceneStyle = presetOptions(
+      state.presets.subtitle_style_presets || [],
+      scene.subtitle_style_preset_id || "",
+      "",
+    );
+    sceneStyle.dataset.sceneField = "subtitle_style_preset_id";
+    const sceneSave = document.createElement("button");
+    sceneSave.type = "button";
+    sceneSave.textContent = "保存";
+    sceneSave.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const nextEmotion = sceneEmotion.value || "neutral";
+      const nextStyle = sceneStyle.value || "";
+      const nextScenes = (state.projectScenes || []).filter((item) => item.id !== scene.id);
+      nextScenes.push({
+        ...scene,
+        emotion: nextEmotion,
+        subtitle_style_preset_id: nextStyle,
+      });
+      state.projectScenes = nextScenes.sort((a, b) => a.start_sec - b.start_sec || a.end_sec - b.end_sec);
+      for (const sub of subtitleItems()) {
+        if (sub.scene_id === scene.id) {
+          sub.emotion = nextEmotion;
+          sub.subtitle_style_preset_id = nextStyle;
+        }
+      }
+      persistCurrentSubtitles().catch(() => {});
+      saveProjectScenes().catch(() => {});
+      renderSubtitles();
+      updateOverlay();
+    });
+    sceneControls.appendChild(sceneEmotion);
+    sceneControls.appendChild(sceneStyle);
+    sceneControls.appendChild(sceneSave);
+    const splitBtn = document.createElement("button");
+    splitBtn.type = "button";
+    splitBtn.textContent = "分割";
+    splitBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      splitSceneEntry(scene);
+    });
+    const mergePrevBtn = document.createElement("button");
+    mergePrevBtn.type = "button";
+    mergePrevBtn.textContent = "前に結合";
+    mergePrevBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      mergeSceneEntry(scene, "prev");
+    });
+    const mergeNextBtn = document.createElement("button");
+    mergeNextBtn.type = "button";
+    mergeNextBtn.textContent = "次に結合";
+    mergeNextBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      mergeSceneEntry(scene, "next");
+    });
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.textContent = "反映";
+    applyBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const emotion = $("defaultEmotionPreset")?.value || "neutral";
+      const style = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
+      for (const sub of subtitleItems()) {
+        if (sub.scene_id === scene.id) {
+          sub.emotion = emotion;
+          sub.subtitle_style_preset_id = style;
+        }
+      }
+      renderSubtitles();
+      updateOverlay();
+    });
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "削除";
+    removeBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.projectScenes = (state.projectScenes || []).filter((item) => item.id !== scene.id);
+      for (const sub of subtitleItems()) {
+        if (sub.scene_id === scene.id) {
+          sub.scene_id = "";
+        }
+      }
+      persistCurrentSubtitles().catch(() => {});
+      saveProjectScenes().catch(() => {});
+      renderSubtitles();
+      updateOverlay();
+    });
+    const sceneOps = document.createElement("div");
+    sceneOps.className = "scene-ops";
+    sceneOps.appendChild(splitBtn);
+    sceneOps.appendChild(mergePrevBtn);
+    sceneOps.appendChild(mergeNextBtn);
+    sceneOps.appendChild(applyBtn);
+    sceneOps.appendChild(removeBtn);
+    item.appendChild(idx);
+    item.appendChild(meta);
+    item.appendChild(action);
+    item.appendChild(bounds);
+    item.appendChild(sceneControls);
+    item.appendChild(sceneOps);
+    item.addEventListener("click", () => {
+      const first = subtitleItems().find((sub) => sub.scene_id === scene.id);
+      if (first) {
+        state.selectedSubtitleId = first.id;
+        state.loopSubtitleId = first.id;
+        seekToSubtitle(first);
+      } else {
+        video.currentTime = Math.min(video.duration || 0, Number(scene.start_sec) || 0);
+      }
+      renderScenes();
+      renderSubtitles();
+    });
+    list.appendChild(item);
+  });
 }
 
 function setAppPage(page) {
@@ -122,6 +680,8 @@ function settings() {
     use_isolated_voice_for_vad: $("useIsolatedVoiceForVad").checked,
     use_isolated_voice_for_whisper: $("useIsolatedVoiceForWhisper").checked,
     silence_threshold_db: -35.0,
+    default_emotion_preset_id: $("defaultEmotionPreset")?.value || "emotion_neutral",
+    default_subtitle_style_preset_id: $("defaultSubtitleStylePreset")?.value || "subtitle_standard",
     subtitle_font_name: $("subtitleFontName").value.trim() || "Meiryo",
     subtitle_font_size: Number($("subtitleFontSize").value) || 42,
     subtitle_outline_width: Number($("subtitleOutlineWidth").value) || 0,
@@ -433,7 +993,7 @@ function seekToSubtitle(sub) {
 
 function renderSubtitles() {
   const list = $("subtitleList");
-  const subtitles = state.editPlan?.subtitles || state.transcript?.subtitles || [];
+  const subtitles = subtitleItems();
   $("subtitleCount").textContent = `${subtitles.length}件`;
   list.textContent = "";
   subtitles.forEach((sub, index) => {
@@ -451,6 +1011,12 @@ function renderSubtitles() {
     speakerInput.value = sub.speaker_label || sub.speaker_id || "";
     speakerInput.placeholder = "speaker";
     meta.appendChild(speakerInput);
+
+    const sceneInput = document.createElement("input");
+    sceneInput.dataset.field = "scene_id";
+    sceneInput.value = sub.scene_id || "";
+    sceneInput.placeholder = "scene";
+    meta.appendChild(sceneInput);
 
     const startInput = document.createElement("input");
     startInput.dataset.field = "output_start_sec";
@@ -476,6 +1042,33 @@ function renderSubtitles() {
     const confidenceText = sub.speaker_confidence != null ? ` / ${Math.round((Number(sub.speaker_confidence) || 0) * 100)}%` : "";
     speakerInfo.textContent = `${sub.speaker_id || ""}${confidenceText}`;
 
+    const presetRow = document.createElement("div");
+    presetRow.className = "subtitle-preset-row";
+    const emotionLabel = document.createElement("label");
+    emotionLabel.textContent = "感情";
+    const emotionSelect = presetOptions(
+      (state.presets.emotion_labels || []).map((emotion) => ({
+        id: emotion,
+        name: emotion,
+      })),
+      sub.emotion || "neutral",
+      "",
+    );
+    emotionSelect.dataset.field = "emotion";
+    emotionLabel.appendChild(emotionSelect);
+    presetRow.appendChild(emotionLabel);
+
+    const styleLabel = document.createElement("label");
+    styleLabel.textContent = "字幕スタイル";
+    const styleSelect = presetOptions(
+      state.presets.subtitle_style_presets || [],
+      sub.subtitle_style_preset_id || "",
+      "",
+    );
+    styleSelect.dataset.field = "subtitle_style_preset_id";
+    styleLabel.appendChild(styleSelect);
+    presetRow.appendChild(styleLabel);
+
     const textarea = document.createElement("textarea");
     textarea.dataset.field = "text";
     textarea.value = sub.text || "";
@@ -490,6 +1083,7 @@ function renderSubtitles() {
       ["loop-off", "解除"],
       ["merge-prev", "前と結合"],
       ["split", "分割"],
+      ["scene-apply", "同シーンへ反映"],
       ["delete", "削除"],
     ].forEach(([action, label]) => {
       const button = document.createElement("button");
@@ -501,6 +1095,7 @@ function renderSubtitles() {
 
     item.appendChild(meta);
     item.appendChild(speakerInfo);
+    item.appendChild(presetRow);
     item.appendChild(textarea);
     item.appendChild(actions);
 
@@ -511,9 +1106,22 @@ function renderSubtitles() {
       if (field === "enabled") sub.enabled = target.checked;
       else if (field === "text") sub.text = target.value;
       else if (field === "speaker_label") sub.speaker_label = target.value;
+      else if (field === "scene_id") sub.scene_id = target.value;
+      else if (field === "emotion") {
+        sub.emotion = target.value;
+        const matchedPreset = (state.presets.emotion_presets || []).find((preset) => preset.emotion === target.value);
+        if (matchedPreset?.subtitle_style_preset_id) {
+          sub.subtitle_style_preset_id = matchedPreset.subtitle_style_preset_id;
+          const styleSelect = item.querySelector('[data-field="subtitle_style_preset_id"]');
+          if (styleSelect) styleSelect.value = matchedPreset.subtitle_style_preset_id;
+        }
+      } else if (field === "subtitle_style_preset_id") {
+        sub.subtitle_style_preset_id = target.value;
+      }
       else sub[field] = parseTime(target.value);
       updateOverlay();
       drawTimeline();
+      saveProjectScenes().catch(() => {});
     });
     item.addEventListener("click", (event) => {
       const button = event.target.closest("button");
@@ -548,6 +1156,18 @@ function renderSubtitles() {
         sub.text = (sub.text || "").slice(0, half).trim();
         subtitles.splice(index + 1, 0, next);
       }
+      if (action === "scene-apply") {
+        const sceneId = sub.scene_id || "";
+        if (sceneId) {
+          for (const itemSub of subtitles) {
+            if (itemSub.scene_id === sceneId) {
+              itemSub.emotion = sub.emotion || "neutral";
+              itemSub.subtitle_style_preset_id = sub.subtitle_style_preset_id || "";
+            }
+          }
+          saveProjectScenes().catch(() => {});
+        }
+      }
       if (action === "delete") {
         subtitles.splice(index, 1);
         if (state.selectedSubtitleId === sub.id) {
@@ -558,9 +1178,11 @@ function renderSubtitles() {
       }
       renderSubtitles();
       updateOverlay();
+      saveProjectScenes().catch(() => {});
     });
     list.appendChild(item);
   });
+  renderScenes();
 }
 
 function setEditorView(view) {
@@ -819,6 +1441,9 @@ async function loadSelectedVideo() {
   state.previewUrl = null;
   state.videoInfo = null;
   state.processingSummary = null;
+  state.videoInfoExpanded = false;
+  state.projectSettings = created.ui_state || state.projectSettings;
+  state.projectScenes = created.scenes || [];
   video.src = state.sourceVideoUrl;
   $("projectLabel").textContent = state.projectId;
   $("paths").textContent = created.source_video;
@@ -826,6 +1451,7 @@ async function loadSelectedVideo() {
   const info = await api("/api/video/probe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_path: state.sourceVideo }) });
   state.videoInfo = info;
   renderVideoInfo();
+  await loadPresets().catch(() => {});
   $("endTime").value = fmtTime(info.duration_sec);
   setSourceRanges(buildSourceRanges(info.duration_sec, Number($("splitMinutes").value) || 20), 0);
   selectSourceRange(0);
@@ -874,7 +1500,7 @@ $("transcribeBtn").addEventListener("click", () =>
         silence_threshold_db: -35.0,
       }),
     });
-    state.transcript = {
+  state.transcript = {
       subtitles: data.subtitles || [],
       raw_subtitles: data.raw_subtitles || data.subtitles || [],
       keep_segments: data.keep_segments || [],
@@ -882,6 +1508,13 @@ $("transcribeBtn").addEventListener("click", () =>
       protected_segments: data.protected_segments || [],
       processing_summary: data.processing_summary || null,
     };
+    const defaultEmotion = $("defaultEmotionPreset")?.value || "neutral";
+    const defaultStyle = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
+    for (const sub of state.transcript.subtitles || []) {
+      if (!sub.emotion) sub.emotion = defaultEmotion;
+      if (!sub.subtitle_style_preset_id) sub.subtitle_style_preset_id = defaultStyle;
+    }
+    syncProjectScenesFromSubtitles();
     state.manualCutSegments = data.manual_cut_segments || state.manualCutSegments || [];
     state.protectedSegments = data.protected_segments || state.protectedSegments || [];
     state.processingSummary = data.processing_summary || null;
@@ -905,6 +1538,7 @@ $("transcribeBtn").addEventListener("click", () =>
     };
     renderSubtitles();
     renderVideoInfo();
+    saveProjectScenes().catch(() => {});
   })
 );
 
@@ -943,22 +1577,7 @@ $("planBtn").addEventListener("click", () =>
 
 $("saveSubtitlesBtn").addEventListener("click", () =>
   runStep("字幕保存", async () => {
-    const subtitles = state.editPlan?.subtitles || state.transcript?.subtitles;
-    if (!subtitles) throw new Error("先に文字起こしを実行してください");
-    const endpoint = state.editPlanPath && state.editPlan ? "/api/subtitles/update" : "/api/transcript/update";
-    const data = await api(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_id: state.projectId, subtitles }),
-    });
-    if (data.edit_plan) {
-      state.editPlan = data.edit_plan;
-    } else if (data.transcript) {
-      state.transcript = {
-        ...state.transcript,
-        ...data.transcript,
-      };
-    }
+    const data = await persistCurrentSubtitles();
     renderSubtitles();
     $("paths").textContent = data.srt_path || data.transcript_path;
   })
@@ -1027,6 +1646,10 @@ $("renderedModeBtn").addEventListener("click", () => setMode("rendered"));
 $("editorPageBtn").addEventListener("click", () => setAppPage("editor"));
 $("settingsPageBtn").addEventListener("click", () => setAppPage("settings"));
 $("settingsBackBtn").addEventListener("click", () => setAppPage("editor"));
+$("videoInfoToggleBtn").addEventListener("click", () => {
+  state.videoInfoExpanded = !state.videoInfoExpanded;
+  renderVideoInfo();
+});
 $("sourceRangeList").addEventListener("click", (event) => {
   const row = event.target.closest(".source-range-item");
   if (!row) return;
@@ -1057,6 +1680,52 @@ $("waveformCutEndBtn").addEventListener("click", () => {
   setWaveformDraftPoint("end");
   registerWaveformSelection();
 });
+$("applyDefaultPresetBtn").addEventListener("click", () => {
+  const sub = selectedSubtitle();
+  if (!sub) {
+    setStatus("先に字幕を選択してください", true);
+    return;
+  }
+  applyDefaultPresetToSubtitle(sub);
+  renderSubtitles();
+  updateOverlay();
+});
+$("addSceneBtn").addEventListener("click", () => {
+  if (!state.projectId) {
+    setStatus("先に動画を読み込んでください", true);
+    return;
+  }
+  addManualSceneFromCurrentRange();
+});
+$("syncScenesBtn").addEventListener("click", () => {
+  if (!state.projectId) {
+    setStatus("先に動画を読み込んでください", true);
+    return;
+  }
+  resyncScenesFromSubtitles();
+});
+$("reassignScenesBtn").addEventListener("click", () =>
+  runStep("scene_id再割当", async () => {
+    if (!state.projectId) throw new Error("先に動画を読み込んでください");
+    const result = reassignSubtitlesToScenes();
+    const data = await persistCurrentSubtitles();
+    syncProjectScenesFromSubtitles();
+    await saveProjectScenes();
+    renderSubtitles();
+    renderScenes();
+    updateOverlay();
+    $("paths").textContent = data.srt_path || data.transcript_path || "";
+    setStatus(`scene_idを ${result.reassigned} 件再割当しました`);
+  })
+);
+$("defaultEmotionPreset").addEventListener("change", () => {
+  saveProjectSettings().catch(() => {});
+  renderScenes();
+});
+$("defaultSubtitleStylePreset").addEventListener("change", () => {
+  saveProjectSettings().catch(() => {});
+  renderScenes();
+});
 $("waveformStage").addEventListener("click", (event) => {
   if (state.editorView !== "waveform") return;
   const time = waveformTimeFromEvent(event);
@@ -1076,3 +1745,4 @@ setInterval(waveformLoopTick, 50);
 setAppPage("editor");
 syncAudioSettingsControls();
 syncAudioSettingsControls();
+loadPresets().catch(() => {});

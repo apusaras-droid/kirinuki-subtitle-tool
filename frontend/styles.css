@@ -263,6 +263,12 @@ video {
   margin-top: 10px;
 }
 
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .settings-page .settings-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -357,6 +363,90 @@ pre {
   overflow: auto;
 }
 
+.scene-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fafbfc;
+}
+
+.scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.scene-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.scene-item {
+  display: grid;
+  grid-template-columns: 70px 1fr auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.scene-item.selected {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.scene-item .scene-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scene-item .scene-meta small {
+  color: var(--muted);
+}
+
+.scene-item button {
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.scene-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.scene-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.scene-ops button {
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.scene-bounds {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.scene-bounds input {
+  width: 100%;
+}
+
 .speaker-roster-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -397,7 +487,7 @@ pre {
 
 .subtitle-meta {
   display: grid;
-  grid-template-columns: 46px 1fr 1fr 1fr 72px;
+  grid-template-columns: 46px 1fr 1fr 1fr 1fr 72px;
   gap: 6px;
   align-items: center;
   margin-bottom: 8px;
@@ -407,6 +497,25 @@ pre {
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.subtitle-preset-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.subtitle-preset-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.subtitle-preset-row select {
+  width: 100%;
 }
 
 .subtitle-actions {

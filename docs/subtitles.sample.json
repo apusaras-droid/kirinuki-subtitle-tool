@@ -1,0 +1,40 @@
+[
+  {
+    "id": "sub_0007",
+    "scene_id": "scene_001",
+    "start_sec": 13.0,
+    "end_sec": 15.2,
+    "text": "え、今の見た?",
+    "speaker_label": "SPEAKER_01",
+    "emotion": "surprise",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_surprise",
+    "override": {
+      "font_size": 52
+    }
+  },
+  {
+    "id": "sub_0008",
+    "scene_id": "scene_001",
+    "start_sec": 16.0,
+    "end_sec": 18.2,
+    "text": "ちょっと待って。",
+    "speaker_label": "SPEAKER_01",
+    "emotion": "surprise",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_surprise",
+    "override": {}
+  },
+  {
+    "id": "sub_0009",
+    "scene_id": "scene_002",
+    "start_sec": 31.5,
+    "end_sec": 34.0,
+    "text": "やった、うまくいった。",
+    "speaker_label": "SPEAKER_02",
+    "emotion": "joy",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_joy",
+    "override": {}
+  }
+]

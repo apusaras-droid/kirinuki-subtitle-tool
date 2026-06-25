@@ -124,14 +124,31 @@
             </div>
           </div>
         </section>
-      </section>
+        </section>
 
       <aside class="right-pane">
         <section class="info-panel">
-          <h2>動画情報</h2>
-          <pre id="videoInfo">未取得</pre>
+          <div class="section-title">
+            <h2>動画情報</h2>
+            <button id="videoInfoToggleBtn" type="button">詳細を表示</button>
+          </div>
+          <div id="videoInfoBody" class="hidden-panel">
+            <pre id="videoInfo">未取得</pre>
+          </div>
         </section>
         <section class="subtitle-panel">
+          <div class="scene-panel">
+            <div class="section-title">
+              <h2>シーン</h2>
+              <span id="sceneCount">0件</span>
+            </div>
+            <div class="scene-toolbar">
+              <button id="addSceneBtn" type="button">現在範囲で追加</button>
+              <button id="syncScenesBtn" type="button">字幕から再同期</button>
+              <button id="reassignScenesBtn" type="button">字幕のscene_idを再割当</button>
+            </div>
+            <div id="sceneList" class="scene-list"></div>
+          </div>
           <div class="section-title">
             <h2>字幕編集</h2>
             <span id="subtitleCount">0件</span>
@@ -172,6 +189,16 @@
               <label class="checkbox-label"><input id="voiceIsolationEnabled" type="checkbox" /> 声抽出を使う</label>
               <label class="checkbox-label"><input id="useIsolatedVoiceForVad" type="checkbox" /> 声抽出音声をVADに使う</label>
               <label class="checkbox-label"><input id="useIsolatedVoiceForWhisper" type="checkbox" /> 声抽出音声をWhisperに使う</label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>字幕感情プリセット</h3>
+            <div class="settings-grid">
+              <label>既定の感情<select id="defaultEmotionPreset"></select></label>
+              <label>既定の字幕スタイル<select id="defaultSubtitleStylePreset"></select></label>
+            </div>
+            <div class="settings-actions">
+              <button id="applyDefaultPresetBtn" type="button">選択中字幕へ適用</button>
             </div>
           </div>
           <div class="settings-section">

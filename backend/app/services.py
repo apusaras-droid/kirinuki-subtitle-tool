@@ -28,6 +28,10 @@ WHISPER_CPP_DIR = ROOT / "tools" / "whisper.cpp"
 WHISPER_CPP_EXE = WHISPER_CPP_DIR / "bin" / "whisper-cli.exe"
 WHISPER_CPP_MODELS = WHISPER_CPP_DIR / "models"
 WHISPER_CPP_VAD_MODEL = WHISPER_CPP_MODELS / "ggml-silero-v5.1.2.bin"
+DOCS_DIR = ROOT / "docs"
+EMOTION_PRESETS_SAMPLE = DOCS_DIR / "emotion_presets.sample.json"
+SUBTITLE_STYLE_PRESETS_SAMPLE = DOCS_DIR / "subtitle_style_presets.sample.json"
+SCENES_SAMPLE = DOCS_DIR / "scenes.sample.json"
 WAVEFORM_MAX_POINTS = 1800
 MAX_HISTORY_VERSIONS = 12
 
@@ -208,6 +212,17 @@ def project_info(project_id: str) -> dict:
     return json.loads(info_path.read_text(encoding="utf-8"))
 
 
+def update_project_info(project_id: str, updates: dict) -> dict:
+    base = require_project(project_id)
+    info_path = base / "project.json"
+    if not info_path.exists():
+        raise HTTPException(status_code=404, detail="project.jsonが見つかりません")
+    current = json.loads(info_path.read_text(encoding="utf-8"))
+    current.update(updates or {})
+    atomic_write_json(info_path, current, backup=True)
+    return current
+
+
 def _safe_within_project(project_id: str, path: Path) -> bool:
     base = require_project(project_id).resolve()
     try:
@@ -314,6 +329,154 @@ def load_project_edit_plan(project_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _load_json_file(path: Path, fallback: list[dict] | dict) -> list[dict] | dict:
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return fallback
+
+
+def load_emotion_presets() -> list[dict]:
+    fallback = [
+        {
+            "id": "emotion_neutral",
+            "name": "通常",
+            "emotion": "neutral",
+            "target_scope": "scene",
+            "effect_group_id": "",
+            "subtitle_style_preset_id": "subtitle_standard",
+            "description": "標準字幕",
+        },
+        {
+            "id": "emotion_surprise_default",
+            "name": "驚き",
+            "emotion": "surprise",
+            "target_scope": "scene",
+            "effect_group_id": "",
+            "subtitle_style_preset_id": "subtitle_emotion_surprise",
+            "description": "驚きシーンの既定字幕",
+        },
+    ]
+    data = _load_json_file(EMOTION_PRESETS_SAMPLE, fallback)
+    return data if isinstance(data, list) else fallback
+
+
+def load_subtitle_style_presets() -> list[dict]:
+    fallback = [
+        {
+            "id": "subtitle_standard",
+            "name": "標準",
+            "font_name": "Meiryo",
+            "font_size": 42,
+            "font_weight": "bold",
+            "text_color": "#FFFFFF",
+            "outline_color": "#000000",
+            "outline_width": 3,
+            "bubble_style": "speech",
+            "bubble_fill_color": "#222222",
+            "bubble_outline_color": "#FFFFFF",
+            "bubble_outline_width": 2,
+            "shadow_enabled": True,
+            "shadow_color": "#000000",
+            "shadow_blur": 4,
+        },
+        {
+            "id": "subtitle_emotion_surprise",
+            "name": "驚き",
+            "font_name": "Meiryo",
+            "font_size": 48,
+            "font_weight": "heavy",
+            "text_color": "#FFFFFF",
+            "outline_color": "#000000",
+            "outline_width": 4,
+            "bubble_style": "burst",
+            "bubble_fill_color": "#1E90FF",
+            "bubble_outline_color": "#FFFFFF",
+            "bubble_outline_width": 3,
+            "shadow_enabled": True,
+            "shadow_color": "#000000",
+            "shadow_blur": 5,
+        },
+    ]
+    data = _load_json_file(SUBTITLE_STYLE_PRESETS_SAMPLE, fallback)
+    return data if isinstance(data, list) else fallback
+
+
+def load_scene_catalog() -> list[dict]:
+    fallback = [
+        {
+            "id": "scene_001",
+            "start_sec": 12.5,
+            "end_sec": 28.0,
+            "emotion": "surprise",
+            "effect_group_id": "",
+            "subtitle_style_preset_id": "subtitle_emotion_surprise",
+            "comment_ids": ["sub_0007", "sub_0008"],
+        }
+    ]
+    data = _load_json_file(SCENES_SAMPLE, fallback)
+    return data if isinstance(data, list) else fallback
+
+
+def preset_catalog() -> dict:
+    return {
+        "emotion_presets": load_emotion_presets(),
+        "subtitle_style_presets": load_subtitle_style_presets(),
+        "scenes": load_scene_catalog(),
+        "emotion_labels": ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
+    }
+
+
+def build_scene_catalog_from_subtitles(subtitles: list[dict], existing_scenes: list[dict] | None = None) -> list[dict]:
+    by_id: dict[str, dict] = {}
+    for scene in existing_scenes or []:
+        scene_id = str(scene.get("id", "")).strip()
+        if not scene_id:
+            continue
+        by_id[scene_id] = dict(scene)
+        by_id[scene_id]["comment_ids"] = list(scene.get("comment_ids") or [])
+    for sub in subtitles or []:
+        scene_id = str(sub.get("scene_id", "")).strip()
+        if not scene_id:
+            continue
+        start = float(sub.get("start_sec", sub.get("output_start_sec", 0.0)) or 0.0)
+        end = float(sub.get("end_sec", sub.get("output_end_sec", start)) or start)
+        if scene_id not in by_id:
+            by_id[scene_id] = {
+                "id": scene_id,
+                "start_sec": start,
+                "end_sec": end,
+                "emotion": str(sub.get("emotion", "neutral") or "neutral"),
+                "effect_group_id": str(sub.get("effect_group_id", "") or ""),
+                "subtitle_style_preset_id": str(sub.get("subtitle_style_preset_id", "") or ""),
+                "comment_ids": [],
+            }
+        scene = by_id[scene_id]
+        scene["start_sec"] = round(min(float(scene.get("start_sec", start)), start), 3)
+        scene["end_sec"] = round(max(float(scene.get("end_sec", end)), end), 3)
+        scene["emotion"] = str(scene.get("emotion") or sub.get("emotion") or "neutral")
+        scene["effect_group_id"] = str(scene.get("effect_group_id") or sub.get("effect_group_id") or "")
+        scene["subtitle_style_preset_id"] = str(scene.get("subtitle_style_preset_id") or sub.get("subtitle_style_preset_id") or "")
+        comment_ids = scene.get("comment_ids") or []
+        if sub.get("id") and sub["id"] not in comment_ids:
+            comment_ids.append(sub["id"])
+        scene["comment_ids"] = comment_ids
+    return sorted(
+        [
+            {
+                "id": scene_id,
+                "start_sec": round(float(scene.get("start_sec", 0.0)), 3),
+                "end_sec": round(float(scene.get("end_sec", 0.0)), 3),
+                "emotion": str(scene.get("emotion") or "neutral"),
+                "effect_group_id": str(scene.get("effect_group_id") or ""),
+                "subtitle_style_preset_id": str(scene.get("subtitle_style_preset_id") or ""),
+                "comment_ids": list(scene.get("comment_ids") or []),
+            }
+            for scene_id, scene in by_id.items()
+        ],
+        key=lambda item: (float(item.get("start_sec", 0.0)), float(item.get("end_sec", 0.0)), item["id"]),
+    )
+
+
 def normalize_edit_plan_source_video(project_id: str, plan: dict) -> dict:
     normalized = dict(plan)
     source = project_source_video(project_id)
@@ -347,6 +510,11 @@ def create_project_from_local_file(source_file: Path, project_name: str | None =
         "project_id": project_id,
         "source_video": str(source_path.relative_to(base)),
         "source_video_url": f"/api/projects/{project_id}/media/source/{source_path.name}",
+        "scenes": [],
+        "ui_state": {
+            "default_emotion_preset_id": "emotion_neutral",
+            "default_subtitle_style_preset_id": "subtitle_standard",
+        },
     }
     atomic_write_json(base / "project.json", info)
     audit_project_event(project_id, "project.created", context={"source_file": str(source_file)})

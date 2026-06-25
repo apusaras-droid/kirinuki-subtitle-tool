@@ -1,0 +1,47 @@
+[
+  {
+    "id": "emotion_neutral",
+    "name": "通常",
+    "emotion": "neutral",
+    "target_scope": "scene",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_standard",
+    "description": "標準字幕"
+  },
+  {
+    "id": "emotion_joy_default",
+    "name": "喜び",
+    "emotion": "joy",
+    "target_scope": "scene",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_joy",
+    "description": "喜びシーンの既定字幕"
+  },
+  {
+    "id": "emotion_anger_default",
+    "name": "怒り",
+    "emotion": "anger",
+    "target_scope": "scene",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_anger",
+    "description": "怒りシーンの既定字幕"
+  },
+  {
+    "id": "emotion_sadness_default",
+    "name": "悲しみ",
+    "emotion": "sadness",
+    "target_scope": "scene",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_sadness",
+    "description": "悲しみシーンの既定字幕"
+  },
+  {
+    "id": "emotion_surprise_default",
+    "name": "驚き",
+    "emotion": "surprise",
+    "target_scope": "scene",
+    "effect_group_id": "",
+    "subtitle_style_preset_id": "subtitle_emotion_surprise",
+    "description": "驚きシーンの既定字幕"
+  }
+]
