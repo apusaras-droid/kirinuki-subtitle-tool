@@ -632,6 +632,8 @@ function setAppPage(page) {
   $("editorPageBtn").classList.toggle("active", page === "editor");
   $("settingsPageBtn").classList.toggle("active", page === "settings");
   $("decorationPageBtn").classList.toggle("active", page === "decoration");
+  const mainLayout = document.querySelector("main.layout");
+  if (mainLayout) mainLayout.classList.toggle("hidden-panel", page !== "editor");
   $("videoShellWrap").classList.toggle("hidden-panel", page !== "editor");
   $("editorControlsWrap").classList.toggle("hidden-panel", page !== "editor");
   $("editorModeWrap").classList.toggle("hidden-panel", page !== "editor");
@@ -643,6 +645,7 @@ function setAppPage(page) {
     buildDecorationProjectFromSubtitles();
   }
   if (page === "decoration") renderDecorationPage();
+  window.scrollTo(0, 0);
 }
 
 async function api(path, options = {}) {
