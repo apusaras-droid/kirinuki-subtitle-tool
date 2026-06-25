@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile
 
 from .audit import audit_event, audit_project_detail_event, audit_project_event
-from .srt import normalize_subtitle_durations, subtitles_from_whisper, write_srt
+from .srt import normalize_subtitle_durations, parse_srt, subtitles_from_whisper, write_srt
 from .timecode import format_srt_time
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -795,6 +795,23 @@ def load_project_decoration(project_id: str) -> dict:
         "scenes": info.get("scenes", []),
         "ui_state": info.get("ui_state", {}),
     }
+
+
+def load_project_subtitles(project_id: str, kind: str = "edited") -> dict:
+    kind = (kind or "edited").strip().lower()
+    if kind not in {"edited", "final", "original"}:
+        raise HTTPException(status_code=400, detail="不正な字幕種別です")
+    if kind == "final":
+        candidates = [resolve_project_path(project_id, "output", "final.srt")]
+    elif kind == "original":
+        candidates = [resolve_project_path(project_id, "subtitles", "original.srt")]
+    else:
+        candidates = [resolve_project_path(project_id, "subtitles", "edited.srt"), resolve_project_path(project_id, "subtitles", "original.srt")]
+    for path in candidates:
+        if path.exists():
+            subtitles = parse_srt(path.read_text(encoding="utf-8", errors="replace"))
+            return {"kind": kind, "path": str(path), "subtitles": subtitles}
+    raise HTTPException(status_code=404, detail="字幕ファイルが見つかりません")
 
 
 def save_project_decoration(project_id: str, decoration: dict) -> dict:

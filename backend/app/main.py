@@ -31,6 +31,7 @@ from .services import (
     require_project,
     load_project_edit_plan,
     load_project_decoration,
+    load_project_subtitles,
     preset_catalog,
     build_scene_catalog_from_subtitles,
     transcribe_audio,
@@ -241,6 +242,12 @@ def api_presets():
 def get_project_decoration(project_id: str):
     require_project(project_id)
     return {"decoration": load_project_decoration(project_id)}
+
+
+@app.get("/api/projects/{project_id}/subtitles")
+def get_project_subtitles(project_id: str, kind: str = "edited"):
+    require_project(project_id)
+    return load_project_subtitles(project_id, kind)
 
 
 @app.post("/api/projects/decoration")

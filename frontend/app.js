@@ -1227,6 +1227,21 @@ function decorationSourceSubtitles() {
   }));
 }
 
+function selectedDecorationSourceKind() {
+  return $("decorationSourceSelect")?.value || "edited";
+}
+
+async function fetchDecorationSourceSubtitles() {
+  if (!state.projectId) return [];
+  const kind = selectedDecorationSourceKind();
+  const data = await api(`/api/projects/${state.projectId}/subtitles?kind=${encodeURIComponent(kind)}`, { method: "GET" });
+  return {
+    kind: data.kind || kind,
+    path: data.path || "",
+    subtitles: data.subtitles || [],
+  };
+}
+
 function decorationEffectGroups() {
   const project = state.decorationProject || {};
   const presets = state.presets.decoration_presets || {};
@@ -1250,12 +1265,12 @@ function decorationLayoutPresets() {
   return (project.layout_presets && project.layout_presets.length ? project.layout_presets : presets.layout_presets || []).map((preset) => ({ ...preset }));
 }
 
-function buildDecorationProjectFromSubtitles() {
-  const subtitles = decorationSourceSubtitles();
+function buildDecorationProjectFromSubtitles(source = null) {
+  const subtitles = source?.subtitles?.length ? source.subtitles : decorationSourceSubtitles();
   const presets = state.presets.decoration_presets || {};
   state.decorationProject = {
     project_id: state.projectId,
-    source_srt: state.editPlanPath ? "subtitles/edited.srt" : "subtitles/original.srt",
+    source_srt: source?.path || (state.editPlanPath ? "subtitles/edited.srt" : "subtitles/original.srt"),
     events: subtitles.map((sub) => ({
       id: sub.id,
       subtitle_id: sub.subtitle_id,
@@ -1296,6 +1311,14 @@ async function loadDecorationProjectFromServer() {
   }
   renderDecorationPage();
   return state.decorationProject;
+}
+
+async function reloadDecorationFromSource() {
+  const source = await fetchDecorationSourceSubtitles();
+  buildDecorationProjectFromSubtitles(source);
+  if (state.decorationProject) state.decorationProject.source_srt = source.path || state.decorationProject.source_srt;
+  renderDecorationPage();
+  return source;
 }
 
 async function saveDecorationProject() {
@@ -2108,32 +2131,36 @@ $("loadDecorationFromSubtitlesBtn").addEventListener("click", () => {
     setStatus("先に動画を読み込んでください", true);
     return;
   }
-  buildDecorationProjectFromSubtitles();
-  setStatus("字幕からデコレーションを生成しました");
+  reloadDecorationFromSource()
+    .then(() => setStatus("字幕からデコレーションを生成しました"))
+    .catch((err) => setStatus(err.message || String(err), true));
 });
 $("decorationReloadBtn").addEventListener("click", () => {
   if (!state.projectId) {
     setStatus("先に動画を読み込んでください", true);
     return;
   }
-  loadDecorationProjectFromServer().catch((err) => setStatus(err.message || String(err), true));
+  reloadDecorationFromSource().catch((err) => setStatus(err.message || String(err), true));
 });
 $("saveDecorationBtn").addEventListener("click", () =>
   runStep("デコレーション保存", async () => {
     if (!state.projectId) throw new Error("先に動画を読み込んでください");
-    if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+    if (!state.decorationProject) await reloadDecorationFromSource();
     await saveDecorationProject();
     setStatus("デコレーションを保存しました");
   })
 );
-$("exportDecorationJsonBtn").addEventListener("click", () => {
-  if (!state.decorationProject) buildDecorationProjectFromSubtitles();
-  downloadDecorationProjectJson();
-});
+$("exportDecorationJsonBtn").addEventListener("click", () =>
+  runStep("JSON出力", async () => {
+    if (!state.projectId) throw new Error("先に動画を読み込んでください");
+    if (!state.decorationProject) await reloadDecorationFromSource();
+    downloadDecorationProjectJson();
+  })
+);
 $("buildDecorationAssBtn").addEventListener("click", () =>
   runStep("ASS出力", async () => {
     if (!state.projectId) throw new Error("先に動画を読み込んでください");
-    if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+    if (!state.decorationProject) await reloadDecorationFromSource();
     await saveDecorationProject();
     const data = await api("/api/decoration/ass", {
       method: "POST",
@@ -2147,7 +2174,7 @@ $("buildDecorationAssBtn").addEventListener("click", () =>
 $("renderDecorationPreviewBtn").addEventListener("click", () =>
   runStep("装飾プレビュー", async () => {
     if (!state.projectId) throw new Error("先に動画を読み込んでください");
-    if (!state.decorationProject) buildDecorationProjectFromSubtitles();
+    if (!state.decorationProject) await reloadDecorationFromSource();
     await saveDecorationProject();
     const data = await api("/api/decoration/render", {
       method: "POST",
@@ -2179,6 +2206,10 @@ $("decorationAddGroupBtn").addEventListener("click", () => {
   state.decorationProject.effect_groups = [...(state.decorationProject.effect_groups || []), nextGroup];
   if (current) current.effect_group_id = nextId;
   renderDecorationPage();
+});
+$("decorationSourceSelect").addEventListener("change", () => {
+  if (!state.projectId) return;
+  reloadDecorationFromSource().catch((err) => setStatus(err.message || String(err), true));
 });
 $("waveformStage").addEventListener("click", (event) => {
   if (state.editorView !== "waveform") return;
