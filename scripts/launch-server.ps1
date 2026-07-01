@@ -171,7 +171,7 @@ if (-not (Test-PortOpen -HostName $HostName -Port $selectedPort)) {
     '@echo off'
     'set "ROOT=%~dp0.."'
     'cd /d "%ROOT%"'
-    ('"' + $python + '" -m uvicorn backend.app.main:app --host ' + $HostName + ' --port ' + $selectedPort + ' --reload >> "%~dp0server-' + $selectedPort + '.log" 2>&1')
+    ('"' + $python + '" -m uvicorn backend.app.main:app --host ' + $HostName + ' --port ' + $selectedPort + ' >> "%~dp0server-' + $selectedPort + '.log" 2>&1')
   ) | Set-Content -LiteralPath $childScript -Encoding ASCII
 
   $startParams = @{

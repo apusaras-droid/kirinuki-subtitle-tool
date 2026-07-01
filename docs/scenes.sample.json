@@ -5,6 +5,7 @@
     "end_sec": 28.0,
     "emotion": "surprise",
     "effect_group_id": "",
+    "screen_effect_stack_ids": [],
     "subtitle_style_preset_id": "subtitle_emotion_surprise",
     "comment_ids": ["sub_0007", "sub_0008"]
   },
@@ -14,6 +15,7 @@
     "end_sec": 46.5,
     "emotion": "joy",
     "effect_group_id": "",
+    "screen_effect_stack_ids": [],
     "subtitle_style_preset_id": "subtitle_emotion_joy",
     "comment_ids": ["sub_0009"]
   }

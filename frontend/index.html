@@ -8,15 +8,31 @@
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <h1>切り抜き字幕作成ツール</h1>
-        <p id="projectLabel">プロジェクト未作成</p>
-      </div>
+        <div>
+          <h1>切り抜き字幕作成ツール</h1>
+          <p id="projectLabel">プロジェクト未作成</p>
+          <div id="taskProgress" class="task-progress idle">
+            <span id="taskProgressName">待機中</span>
+            <span id="taskProgressTime">経過 00:00 / 残り --:--</span>
+          </div>
+        </div>
         <div class="header-actions">
           <button id="editorPageBtn" type="button" class="active">編集画面</button>
+          <button id="subtitlePageBtn" type="button">字幕編集</button>
+          <button id="projectListPageBtn" type="button">プロジェクト一覧</button>
           <button id="settingsPageBtn" type="button">設定画面</button>
           <button id="decorationPageBtn" type="button">デコレーション画面</button>
-          <label class="checkbox-label export-toggle"><input id="burnSubtitles" type="checkbox" />字幕を焼き込む</label>
+          <button id="previewCheckPageBtn" type="button">プレビュー点検</button>
+          <button id="saveProjectBtn" type="button">プロジェクト保存</button>
+          <button id="overwriteProjectBtn" type="button">上書き保存</button>
+          <label class="export-mode-label">最終出力
+            <select id="finalOutputMode">
+              <option value="video_srt">カット動画 + SRT</option>
+              <option value="video_ass">カット動画 + 装飾ASS</option>
+              <option value="decorated_burned">装飾を動画に焼き込み</option>
+            </select>
+          </label>
+          <label class="checkbox-label export-toggle hidden-panel"><input id="burnSubtitles" type="checkbox" />字幕を焼き込む</label>
           <button id="saveSubtitlesBtn" type="button" disabled>字幕を保存</button>
           <button id="manualPreviewBtn" type="button" disabled>手動カットを仮出力</button>
           <button id="previewRenderBtn" type="button" disabled>仮出力を作成</button>
@@ -150,14 +166,62 @@
             </div>
             <div id="sceneList" class="scene-list"></div>
           </div>
-          <div class="section-title">
-            <h2>字幕編集</h2>
-            <span id="subtitleCount">0件</span>
-          </div>
-          <div id="subtitleList" class="subtitle-list"></div>
         </section>
       </aside>
     </main>
+
+    <section id="subtitlePage" class="subtitle-page hidden-panel">
+      <div class="settings-page-header">
+        <div>
+          <h2>字幕編集</h2>
+          <p>字幕の本文、時刻、話者、scene_id をここだけで編集する。</p>
+        </div>
+        <div class="header-actions">
+          <button id="subtitlePageBackBtn" type="button" class="primary">編集画面へ戻る</button>
+          <button id="subtitleSyncScenesBtn" type="button">字幕からシーン再同期</button>
+          <button id="extendSubtitleTimesBtn" type="button">全字幕を前後0.5秒延長</button>
+        </div>
+      </div>
+      <div class="subtitle-page-body">
+        <section class="subtitle-page-panel subtitle-preview-panel">
+          <div class="section-title">
+            <h2>動画プレビュー</h2>
+            <span>字幕確認</span>
+          </div>
+          <div class="mode-row subtitle-preview-mode-row">
+            <button id="subtitlePreviewSourceModeBtn" type="button">元動画</button>
+            <button id="subtitlePreviewPlannedModeBtn" type="button">カット案再生</button>
+          </div>
+          <div class="video-shell page-preview-shell">
+            <video id="subtitlePagePreviewVideo" controls playsinline></video>
+            <div id="subtitlePagePreviewOverlay" class="subtitle-overlay"></div>
+          </div>
+        </section>
+        <section class="subtitle-page-panel">
+          <div class="section-title">
+            <h2>字幕一覧</h2>
+            <span id="subtitleCountPage">0件</span>
+          </div>
+          <div id="subtitleListPage" class="subtitle-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="projectListPage" class="project-list-page hidden-panel">
+      <div class="settings-page-header">
+        <div>
+          <h2>プロジェクト一覧</h2>
+          <p>保存済みの作業を開いて再開する。</p>
+        </div>
+        <button id="projectListBackBtn" type="button" class="primary">編集画面へ戻る</button>
+      </div>
+      <div class="project-list-page-body">
+        <div class="project-list-toolbar">
+          <button id="refreshProjectListBtn" type="button">再読込</button>
+        </div>
+        <div id="projectList" class="project-list"></div>
+      </div>
+    </section>
 
     <section id="settingsPage" class="settings-page hidden-panel">
       <div class="settings-page-header">
@@ -185,12 +249,37 @@
           </div>
           <div class="settings-section">
             <h3>音声解析</h3>
+            <div class="settings-actions">
+              <label>発話タイミングプリセット
+                <select id="audioTimingPreset">
+                  <option value="standard">標準</option>
+                  <option value="strict" selected>発話を厳密に拾う</option>
+                  <option value="bgm_strong">BGMが強い動画</option>
+                  <option value="whisperx_precise">精密補正・重い</option>
+                  <option value="loose">余白多め</option>
+                </select>
+              </label>
+              <button id="applyAudioTimingPresetBtn" type="button">プリセットを適用</button>
+            </div>
             <div class="settings-grid">
               <label class="checkbox-label"><input id="useVad" type="checkbox" checked /> VADを使う</label>
               <label class="checkbox-label"><input id="voiceIsolationEnabled" type="checkbox" /> 声抽出を使う</label>
               <label class="checkbox-label"><input id="useIsolatedVoiceForVad" type="checkbox" /> 声抽出音声をVADに使う</label>
               <label class="checkbox-label"><input id="useIsolatedVoiceForWhisper" type="checkbox" /> 声抽出音声をWhisperに使う</label>
+              <label class="checkbox-label"><input id="alignTimestamps" type="checkbox" checked /> VADで字幕時刻を補正</label>
+              <label class="checkbox-label"><input id="useWhisperxAlignment" type="checkbox" /> WhisperX精密補正（重い）</label>
+              <label>VADしきい値<input id="vadThreshold" type="number" value="0.22" min="0.05" max="0.95" step="0.01" /></label>
+              <label>最小発話秒<input id="minSpeechDurationSec" type="number" value="0.12" min="0.03" max="2" step="0.01" /></label>
+              <label>最小無音秒<input id="minSilenceDurationSec" type="number" value="0.20" min="0.03" max="3" step="0.01" /></label>
+              <label>VAD内部無音秒<input id="vadMinSilenceDurationSec" type="number" value="0.08" min="0.03" max="2" step="0.01" /></label>
+              <label>VAD発話パッド秒<input id="speechPadSec" type="number" value="0.03" min="0" max="1" step="0.01" /></label>
+              <label>字幕/カット前余白秒<input id="preMarginSec" type="number" value="0.12" min="0" max="5" step="0.01" /></label>
+              <label>字幕/カット後余白秒<input id="postMarginSec" type="number" value="0.25" min="0" max="5" step="0.01" /></label>
+              <label>結合する無音秒<input id="mergeSilenceGapSec" type="number" value="0.20" min="0" max="5" step="0.01" /></label>
+              <label>音量無音しきい値dB<input id="silenceThresholdDb" type="number" value="-35" min="-80" max="-5" step="1" /></label>
+              <label>最小キープ秒<input id="minKeepSegmentDuration" type="number" value="0.35" min="0.05" max="5" step="0.05" /></label>
             </div>
+            <p class="settings-note">厳密モードは台詞頭のズレを減らす軽量設定です。BGMにVADが引っ張られる場合は「BGMが強い動画」、時間がかかっても字幕単位の精密補正を試す場合は「精密補正・重い」を使います。</p>
           </div>
           <div class="settings-section">
             <h3>字幕感情プリセット</h3>
@@ -200,6 +289,7 @@
             </div>
             <div class="settings-actions">
               <button id="applyDefaultPresetBtn" type="button">選択中字幕へ適用</button>
+              <button id="resetDefaultPresetBtn" type="button">既定値に戻す</button>
             </div>
           </div>
           <div class="settings-section">
@@ -208,6 +298,18 @@
               <label>字幕フォント<input id="subtitleFontName" type="text" value="Meiryo" /></label>
               <label>字幕サイズ<input id="subtitleFontSize" type="number" value="42" step="1" min="8" /></label>
               <label>字幕の黒縁<input id="subtitleOutlineWidth" type="number" value="2" step="1" min="0" /></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>最終出力</h3>
+            <div class="settings-grid">
+              <label>出力プリセット
+                <select id="outputProfile">
+                  <option value="mp4_compat">MP4 / H.264 + AAC</option>
+                  <option value="mp4_lossless">MKV / FFV1 + FLAC（ロスレス）</option>
+                  <option value="mkv_lossless">MKV / FFV1 + FLAC</option>
+                </select>
+              </label>
             </div>
           </div>
         </section>
@@ -224,7 +326,7 @@
           <button id="loadDecorationFromSubtitlesBtn" type="button">字幕から生成</button>
           <button id="createEffectGroupFromCurrentBtn" type="button">現在字幕からセット作成</button>
           <button id="buildDecorationAssBtn" type="button">ASS出力</button>
-          <button id="renderDecorationPreviewBtn" type="button">装飾プレビュー</button>
+          <button id="exportDecorationAssPackageBtn" type="button">カット動画+ASS出力</button>
           <button id="saveDecorationBtn" type="button" class="primary">保存</button>
           <button id="exportDecorationJsonBtn" type="button">JSON出力</button>
           <button id="decorationBackBtn" type="button" class="primary">編集画面へ戻る</button>
@@ -255,18 +357,59 @@
             <span id="decorationSelectionLabel">未選択</span>
           </div>
           <div id="decorationDetail" class="decoration-detail"></div>
-          <div class="decoration-preview-shell">
+          <div id="textEffectSection">
             <div class="section-title">
-              <h2>装飾プレビュー</h2>
-              <span id="decorationPreviewLabel">未生成</span>
+              <h2>文字連動エフェクト</h2>
+              <span id="effectGroupCount">0件</span>
             </div>
-            <video id="decorationPreviewVideo" controls playsinline></video>
+            <div id="effectGroupList" class="effect-group-list"></div>
           </div>
+          <div id="screenEffectSection">
+            <div class="section-title">
+              <h2>画面エフェクト</h2>
+              <span id="screenEffectStackCount">0件</span>
+            </div>
+            <div class="screen-effect-summary">
+              <div>
+                <strong>全体</strong>
+                <div id="screenEffectGlobalList" class="decoration-chip-list"></div>
+              </div>
+              <div>
+                <strong>現在シーン</strong>
+                <div id="screenEffectSceneList" class="decoration-chip-list"></div>
+              </div>
+            </div>
+            <div id="screenEffectStackList" class="effect-group-list"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="previewCheckPage" class="preview-check-page hidden-panel">
+      <div class="settings-page-header preview-check-header">
+        <div>
+          <h2>プレビュー点検</h2>
+          <p>480pの軽量プレビューで、字幕・枠・画面エフェクトの最終確認を行う。</p>
+        </div>
+        <div class="header-actions preview-check-actions">
+          <button id="renderDecorationPreviewBtn" type="button" class="primary">480p/15秒点検プレビュー</button>
+          <button id="renderCurrentScenePreviewBtn" type="button">現在字幕だけ480p</button>
+          <button id="openMpvPreviewBtn" type="button">240p/3fps軽量プレビュー</button>
+          <button id="decorationPreviewPlayBtn" type="button">再生</button>
+          <button id="decorationPreviewPauseBtn" type="button">停止</button>
+          <button id="previewCheckBackBtn" type="button">デコレーションへ戻る</button>
+        </div>
+      </div>
+      <div class="preview-check-page-body">
+        <section class="preview-check-panel">
           <div class="section-title">
-            <h2>エフェクトグループ</h2>
-            <span id="effectGroupCount">0件</span>
+            <h2>装飾プレビュー</h2>
+            <span id="decorationPreviewLabel">未生成</span>
           </div>
-          <div id="effectGroupList" class="effect-group-list"></div>
+          <div id="decorationPreviewStage" class="decoration-preview-stage preview-check-stage">
+            <video id="decorationPreviewVideo" controls playsinline preload="auto"></video>
+            <canvas id="decorationShaderCanvas" aria-hidden="true"></canvas>
+          </div>
         </section>
       </div>
     </section>

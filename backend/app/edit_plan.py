@@ -228,17 +228,44 @@ def source_time_to_output(relative_sec: float, segments: list[dict]) -> float | 
     return output_time_for_source(relative_sec, segments)
 
 
-def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_range_start: float) -> list[dict]:
+def _subtitle_relative_time(item: dict, start_keys: tuple[str, ...], source_range_start: float, source_range_end: float | None) -> float:
+    for key in start_keys:
+        if key not in item or item.get(key) is None:
+            continue
+        value = float(item.get(key))
+        if key.startswith("range_relative") or key in {"start_sec", "end_sec", "output_start_sec", "output_end_sec", "corrected_start_sec", "corrected_end_sec"}:
+            return value
+        if key.startswith("source_") or key.startswith("original_"):
+            if source_range_end is not None and source_range_start <= value <= source_range_end:
+                return value - source_range_start
+            return value
+        return value
+    return 0.0
+
+
+def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_range_start: float, source_range_end: float | None = None) -> list[dict]:
     mapped: list[dict] = []
     for idx, sub in enumerate(subtitles, start=1):
         item = deepcopy(sub)
-        rel_start = float(item.get("range_relative_start_sec", item.get("source_start_sec", 0.0) - source_range_start))
-        rel_end = float(item.get("range_relative_end_sec", item.get("source_end_sec", rel_start) - source_range_start))
+        rel_start = _subtitle_relative_time(
+            item,
+            ("range_relative_start_sec", "corrected_start_sec", "start_sec", "output_start_sec", "source_start_sec", "original_start_sec"),
+            source_range_start,
+            source_range_end,
+        )
+        rel_end = _subtitle_relative_time(
+            item,
+            ("range_relative_end_sec", "corrected_end_sec", "end_sec", "output_end_sec", "source_end_sec", "original_end_sec"),
+            source_range_start,
+            source_range_end,
+        )
         if rel_end <= rel_start:
             continue
         item["id"] = item.get("id") or f"sub_{idx:04}"
         item["range_relative_start_sec"] = rel_start
         item["range_relative_end_sec"] = rel_end
+        item["source_start_sec"] = round(source_range_start + rel_start, 3)
+        item["source_end_sec"] = round(source_range_start + rel_end, 3)
         item["original_start_sec"] = round(source_range_start + rel_start, 3)
         item["original_end_sec"] = round(source_range_start + rel_end, 3)
         item["original_start"] = item["original_start_sec"]
@@ -284,6 +311,8 @@ def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_
             continue
         out_item = deepcopy(item)
         out_item["segment_id"] = pieces[0]["segment_id"]
+        out_item["source_start_sec"] = pieces[0]["original_start_sec"]
+        out_item["source_end_sec"] = pieces[-1]["original_end_sec"]
         out_item["original_start_sec"] = pieces[0]["original_start_sec"]
         out_item["original_end_sec"] = pieces[-1]["original_end_sec"]
         out_item["original_start"] = out_item["original_start_sec"]
@@ -363,7 +392,7 @@ def build_edit_plan(
         from .srt import subtitles_from_whisper
 
         subtitles = subtitles_from_whisper(transcript)
-    subtitles = map_subtitles_to_output(subtitles, segments, range_start)
+    subtitles = map_subtitles_to_output(subtitles, segments, range_start, range_end)
     speaker_diarization = transcript.get("speaker_diarization") or {}
     speaker_segments = speaker_diarization.get("speaker_segments") or transcript.get("speaker_segments") or []
     speaker_roster = speaker_diarization.get("speaker_roster") or transcript.get("speaker_roster") or []

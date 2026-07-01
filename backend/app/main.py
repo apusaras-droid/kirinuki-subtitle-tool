@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
+import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -32,12 +36,20 @@ from .services import (
     load_project_edit_plan,
     load_project_decoration,
     load_project_subtitles,
+    list_projects,
+    list_system_fonts,
     preset_catalog,
     build_scene_catalog_from_subtitles,
+    delete_project,
+    project_source_video,
+    project_processing_progress,
     transcribe_audio,
     render_decoration_video,
+    export_cut_video_with_decoration_ass,
     build_decoration_ass,
     save_project_decoration,
+    save_shared_decoration_presets,
+    launch_mpv,
     update_project_info,
 )
 from .srt import write_srt
@@ -50,11 +62,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SERVER_HEARTBEAT_TIMEOUT_SEC = 60.0 * 60.0 * 6.0
+SERVER_CLOSE_GRACE_SEC = 30.0
+SERVER_HEARTBEAT_CHECK_SEC = 5.0
+_browser_heartbeat_at = time.monotonic()
+_browser_heartbeat_enabled = False
+_browser_close_requested_at: float | None = None
+_browser_shutdown_started = False
+_active_api_requests = 0
+_active_api_lock = threading.Lock()
+
+
+def _shutdown_process_tree() -> None:
+    current_pid = os.getpid()
+    if os.name == "nt":
+        subprocess.Popen(
+            ["taskkill", "/PID", str(current_pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return
+    try:
+        os.kill(current_pid, signal.SIGTERM)
+    except Exception:
+        os._exit(0)
+
+
+def _browser_heartbeat_watchdog() -> None:
+    global _browser_shutdown_started
+    while True:
+        time.sleep(SERVER_HEARTBEAT_CHECK_SEC)
+        if not _browser_heartbeat_enabled or _browser_shutdown_started:
+            continue
+        with _active_api_lock:
+            active_requests = _active_api_requests
+        if active_requests > 0:
+            continue
+        now = time.monotonic()
+        close_requested = _browser_close_requested_at is not None and now - _browser_close_requested_at >= SERVER_CLOSE_GRACE_SEC
+        heartbeat_expired = now - _browser_heartbeat_at >= SERVER_HEARTBEAT_TIMEOUT_SEC
+        if close_requested or heartbeat_expired:
+            _browser_shutdown_started = True
+            audit_event(
+                "server.shutdown.browser_closed",
+                context={
+                    "timeout_sec": SERVER_HEARTBEAT_TIMEOUT_SEC,
+                    "close_grace_sec": SERVER_CLOSE_GRACE_SEC,
+                    "close_requested": close_requested,
+                    "heartbeat_expired": heartbeat_expired,
+                },
+            )
+            _shutdown_process_tree()
+            return
+
+
+threading.Thread(target=_browser_heartbeat_watchdog, name="browser-heartbeat-watchdog", daemon=True).start()
+
 
 @app.middleware("http")
 async def audit_requests(request: Request, call_next):
+    global _active_api_requests
     started = time.perf_counter()
-    response = await call_next(request)
+    count_as_active = request.url.path not in {"/api/browser/heartbeat", "/api/version"}
+    if count_as_active:
+        with _active_api_lock:
+            _active_api_requests += 1
+    try:
+        response = await call_next(request)
+    finally:
+        if count_as_active:
+            with _active_api_lock:
+                _active_api_requests = max(0, _active_api_requests - 1)
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
     project_id = None
     segments = [segment for segment in request.url.path.split("/") if segment]
@@ -97,6 +176,16 @@ class TranscribeRequest(BaseModel):
     voice_isolation_enabled: bool = False
     use_isolated_voice_for_vad: bool = False
     use_isolated_voice_for_whisper: bool = False
+    vad_threshold: float = 0.25
+    vad_min_speech_duration_ms: int = 100
+    vad_min_silence_duration_ms: int = 80
+    vad_speech_pad_ms: int = 50
+    pre_margin_sec: float = 0.3
+    post_margin_sec: float = 0.5
+    min_speech_duration_sec: float = 0.2
+    merge_silence_gap_sec: float = 0.5
+    align_timestamps: bool = False
+    use_whisperx_alignment: bool = False
 
 
 class SilenceRequest(BaseModel):
@@ -127,6 +216,11 @@ class EditPlanRequest(BaseModel):
     settings: dict[str, Any] = {}
 
 
+class EditPlanUpdateRequest(BaseModel):
+    project_id: str
+    edit_plan: dict[str, Any]
+
+
 class SubtitleUpdateRequest(BaseModel):
     project_id: str
     subtitles: list[dict[str, Any]]
@@ -143,6 +237,7 @@ class RenderRequest(BaseModel):
     project_id: str
     quality: str = "low"
     burn_subtitles: bool = False
+    output_profile: str | None = None
 
 
 class DraftRenderRequest(BaseModel):
@@ -153,12 +248,21 @@ class DraftRenderRequest(BaseModel):
     settings: dict[str, Any] = {}
     quality: str = "low"
     burn_subtitles: bool = False
+    output_profile: str | None = None
 
 
 class ProjectSettingsRequest(BaseModel):
     project_id: str
+    project_name: str | None = None
     default_emotion_preset_id: str | None = None
     default_subtitle_style_preset_id: str | None = None
+    output_profile: str | None = None
+    final_output_mode: str | None = None
+    audio_timing: dict[str, Any] | None = None
+
+
+class ProjectRenameRequest(BaseModel):
+    project_name: str
 
 
 class ProjectScenesRequest(BaseModel):
@@ -171,9 +275,25 @@ class ProjectDecorationRequest(BaseModel):
     decoration: dict[str, Any]
 
 
+class SharedDecorationPresetsRequest(BaseModel):
+    project_id: str | None = None
+    decoration: dict[str, Any]
+
+
 class DecorationRenderRequest(BaseModel):
     project_id: str
     preview: bool = True
+    max_height: int | None = 480
+    fps: int | None = None
+    start_sec: float | None = None
+    duration_sec: float | None = None
+
+
+class MpvLaunchRequest(BaseModel):
+    project_id: str
+    target: str = "decoration_preview"
+    path: str | None = None
+    pause: bool = False
 
 
 @app.post("/api/projects")
@@ -181,11 +301,17 @@ async def create_project(file: UploadFile = File(...), project_name: str | None 
     return await create_project_from_upload(file, project_name)
 
 
+@app.get("/api/projects")
+def list_projects_api():
+    return {"projects": list_projects()}
+
+
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: str):
     base = require_project(project_id)
     project_path = base / "project.json"
-    data = json.loads(project_path.read_text(encoding="utf-8")) if project_path.exists() else {"project_id": project_id}
+    data = project_info(project_id) if project_path.exists() else {"project_id": project_id}
+    data["source_video_path"] = str(project_source_video(project_id))
     edit_plan = base / "edit_plan.json"
     if edit_plan.exists():
         plan = load_project_edit_plan(project_id)
@@ -194,15 +320,45 @@ def get_project(project_id: str):
     return data
 
 
+@app.get("/api/projects/{project_id}/progress")
+def get_project_progress(project_id: str):
+    return project_processing_progress(project_id)
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project_api(project_id: str):
+    delete_project(project_id)
+    return {"deleted": True, "project_id": project_id}
+
+
+@app.patch("/api/projects/{project_id}/rename")
+def rename_project_api(project_id: str, req: ProjectRenameRequest):
+    project_name = req.project_name.strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="プロジェクト名を入力してください")
+    if len(project_name) > 160:
+        raise HTTPException(status_code=400, detail="プロジェクト名が長すぎます")
+    updated = update_project_info(project_id, {"project_name": project_name})
+    return {"project": updated}
+
+
 @app.post("/api/projects/settings")
 def update_project_settings(req: ProjectSettingsRequest):
     updates: dict[str, object] = {}
     current = project_info(req.project_id)
+    if req.project_name is not None:
+        updates["project_name"] = req.project_name
     ui_state = dict(current.get("ui_state") or {})
     if req.default_emotion_preset_id is not None:
         ui_state["default_emotion_preset_id"] = req.default_emotion_preset_id
     if req.default_subtitle_style_preset_id is not None:
         ui_state["default_subtitle_style_preset_id"] = req.default_subtitle_style_preset_id
+    if req.output_profile is not None:
+        ui_state["output_profile"] = req.output_profile
+    if req.final_output_mode is not None:
+        ui_state["final_output_mode"] = req.final_output_mode
+    if req.audio_timing is not None:
+        ui_state["audio_timing"] = req.audio_timing
     updates["ui_state"] = ui_state
     updated = update_project_info(req.project_id, updates)
     return {"project": updated}
@@ -233,9 +389,31 @@ def api_version():
     return version_info()
 
 
+@app.post("/api/browser/heartbeat")
+def api_browser_heartbeat():
+    global _browser_heartbeat_at, _browser_heartbeat_enabled, _browser_close_requested_at
+    _browser_heartbeat_at = time.monotonic()
+    _browser_heartbeat_enabled = True
+    _browser_close_requested_at = None
+    return {"ok": True, "timeout_sec": SERVER_HEARTBEAT_TIMEOUT_SEC}
+
+
+@app.post("/api/browser/close")
+def api_browser_close():
+    global _browser_close_requested_at, _browser_heartbeat_enabled
+    _browser_close_requested_at = time.monotonic()
+    _browser_heartbeat_enabled = True
+    return {"ok": True, "close_grace_sec": SERVER_CLOSE_GRACE_SEC}
+
+
 @app.get("/api/presets")
 def api_presets():
     return preset_catalog()
+
+
+@app.get("/api/system/fonts")
+def api_system_fonts():
+    return {"fonts": list_system_fonts()}
 
 
 @app.get("/api/projects/{project_id}/decoration")
@@ -256,16 +434,40 @@ def update_project_decoration(req: ProjectDecorationRequest):
     return {"decoration": updated}
 
 
+@app.post("/api/decoration-presets/global")
+def update_shared_decoration_presets(req: SharedDecorationPresetsRequest):
+    updated = save_shared_decoration_presets(req.decoration)
+    return {"decoration_presets": updated}
+
+
 @app.post("/api/decoration/ass")
 def api_decoration_ass(req: ProjectDecorationRequest):
     ass_path = build_decoration_ass(req.project_id, req.decoration)
     return {"ass_path": str(ass_path)}
 
 
+@app.post("/api/decoration/export-ass-package")
+def api_decoration_export_ass_package(req: RenderRequest):
+    return export_cut_video_with_decoration_ass(req.project_id, output_profile=req.output_profile)
+
+
 @app.post("/api/decoration/render")
 def api_decoration_render(req: DecorationRenderRequest):
     decoration = load_project_decoration(req.project_id)
-    return render_decoration_video(req.project_id, decoration, preview=req.preview)
+    return render_decoration_video(
+        req.project_id,
+        decoration,
+        preview=req.preview,
+        max_height=req.max_height,
+        fps=req.fps,
+        start_sec=req.start_sec,
+        duration_sec=req.duration_sec,
+    )
+
+
+@app.post("/api/preview/mpv")
+def api_preview_mpv(req: MpvLaunchRequest):
+    return launch_mpv(req.project_id, target=req.target, path=req.path, pause=req.pause)
 
 
 @app.post("/api/video/probe")
@@ -292,6 +494,16 @@ def api_transcribe(req: TranscribeRequest):
         voice_isolation_enabled=req.voice_isolation_enabled,
         use_isolated_voice_for_vad=req.use_isolated_voice_for_vad,
         use_isolated_voice_for_whisper=req.use_isolated_voice_for_whisper,
+        vad_threshold=req.vad_threshold,
+        vad_min_speech_duration_ms=req.vad_min_speech_duration_ms,
+        vad_min_silence_duration_ms=req.vad_min_silence_duration_ms,
+        vad_speech_pad_ms=req.vad_speech_pad_ms,
+        pre_margin_sec=req.pre_margin_sec,
+        post_margin_sec=req.post_margin_sec,
+        min_speech_duration_sec=req.min_speech_duration_sec,
+        merge_silence_gap_sec=req.merge_silence_gap_sec,
+        align_timestamps=req.align_timestamps,
+        use_whisperx_alignment=req.use_whisperx_alignment,
     )
 
 
@@ -325,6 +537,17 @@ def api_create_edit_plan(req: EditPlanRequest):
     path = base / "edit_plan.json"
     atomic_write_json(path, plan, backup=True)
     write_srt(plan.get("subtitles", []), base / "subtitles" / "edited.srt")
+    return {"edit_plan_path": str(path), "edit_plan": plan}
+
+
+@app.post("/api/edit-plan/update")
+def api_update_edit_plan(req: EditPlanUpdateRequest):
+    base = require_project(req.project_id)
+    plan = normalize_edit_plan_source_video(req.project_id, req.edit_plan or {})
+    path = base / "edit_plan.json"
+    atomic_write_json(path, plan, backup=True)
+    write_srt(plan.get("subtitles", []), base / "subtitles" / "edited.srt")
+    update_project_info(req.project_id, {"scenes": plan.get("scenes", [])})
     return {"edit_plan_path": str(path), "edit_plan": plan}
 
 
@@ -370,7 +593,7 @@ def api_update_transcript(req: TranscriptUpdateRequest):
 
 @app.post("/api/preview/render")
 def api_preview(req: RenderRequest):
-    return render_from_plan(req.project_id, preview=True)
+    return render_from_plan(req.project_id, preview=True, output_profile=req.output_profile)
 
 
 @app.post("/api/preview/manual-cuts")
@@ -381,12 +604,12 @@ def api_preview_manual_cuts(req: DraftRenderRequest):
         raise HTTPException(status_code=404, detail="元動画が見つかりません")
     plan = build_edit_plan(source_video, req.source_range, req.silences, req.transcript, req.settings)
     plan = normalize_edit_plan_source_video(req.project_id, plan)
-    return render_from_plan_data(req.project_id, plan, preview=True, burn_subtitles=req.burn_subtitles)
+    return render_from_plan_data(req.project_id, plan, preview=True, burn_subtitles=req.burn_subtitles, output_profile=req.output_profile)
 
 
 @app.post("/api/export/final")
 def api_export(req: RenderRequest):
-    return render_from_plan(req.project_id, preview=False, burn_subtitles=req.burn_subtitles)
+    return render_from_plan(req.project_id, preview=False, burn_subtitles=req.burn_subtitles, output_profile=req.output_profile)
 
 
 if FRONTEND_DIR.exists():

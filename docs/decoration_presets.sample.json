@@ -1,12 +1,96 @@
 {
   "effect_library": [
-    { "id": "bubble_round", "name": "丸吹き出し" },
-    { "id": "bubble_soft", "name": "ソフト吹き出し" },
     { "id": "sparkle", "name": "きらめき" },
     { "id": "pop_in", "name": "ポップイン" },
     { "id": "shake", "name": "揺れ" },
     { "id": "float_in", "name": "浮遊" },
-    { "id": "heart", "name": "ハート" }
+    { "id": "heart", "name": "ハート" },
+    { "id": "star_reaction", "name": "☆反応" },
+    { "id": "heart_reaction", "name": "♡反応" }
+  ],
+  "screen_effect_library": [
+    { "id": "shutter_24fps", "name": "24fpsシャッター" },
+    { "id": "sepia", "name": "セピア" },
+    { "id": "disco", "name": "ディスコ" },
+    { "id": "vignette", "name": "ビネット" },
+    { "id": "cinema", "name": "シネマ" },
+    { "id": "monochrome", "name": "モノクロ" },
+    { "id": "old_tv", "name": "古いテレビ" },
+    { "id": "vhs", "name": "VHS" },
+    { "id": "crt", "name": "CRT" },
+    { "id": "retro_game", "name": "レトロゲーム" },
+    { "id": "neon", "name": "ネオン" },
+    { "id": "cyberpunk", "name": "サイバーパンク" },
+    { "id": "horror", "name": "ホラー" },
+    { "id": "dream", "name": "ドリーム" },
+    { "id": "rainy", "name": "雨の日" },
+    { "id": "sunset", "name": "夕焼け" },
+    { "id": "docu_low_sat", "name": "ドキュメンタリー低彩度" },
+    { "id": "pop_high_sat", "name": "ポップ高彩度" },
+    { "id": "noise", "name": "ノイズ" },
+    { "id": "film_grain", "name": "フィルム粒子" },
+    { "id": "scanlines", "name": "走査線" },
+    { "id": "chromatic_aberration", "name": "色ずれ" },
+    { "id": "edge_blur", "name": "周辺ぼかし" },
+    { "id": "background_blur", "name": "背景ぼかし" },
+    { "id": "highlight_subject", "name": "中央強調" },
+    { "id": "shadow_boost", "name": "暗部持ち上げ" },
+    { "id": "highlight_suppress", "name": "白飛び抑制" },
+    { "id": "sharpen", "name": "シャープ" },
+    { "id": "cinematic_border", "name": "シネマ帯" },
+    { "id": "glitch", "name": "グリッチ" },
+    { "id": "rgb_shift", "name": "RGBシフト" },
+    { "id": "flash", "name": "フラッシュ" },
+    { "id": "strobe", "name": "ストロボ" },
+    { "id": "fade", "name": "フェード" },
+    { "id": "shake", "name": "シェイク" },
+    { "id": "hand_tremor", "name": "手ぶれ" },
+    { "id": "miniature", "name": "ミニチュア" },
+    { "id": "fisheye", "name": "魚眼" },
+    { "id": "speed_lines", "name": "集中線" },
+    { "id": "speed_lines_sparse", "name": "集中線 荒め" },
+    { "id": "speed_lines_white", "name": "集中線 白抜き" },
+    { "id": "speed_lines_slash", "name": "斜めスピード線" },
+    { "id": "speed_lines_frame", "name": "外周集中線" },
+    { "id": "speed_lines_burst", "name": "爆発集中線" },
+    { "id": "speed_lines_outward", "name": "外向き放射線" },
+    { "id": "anime_edge", "name": "アニメ輪郭" },
+    { "id": "halftone", "name": "単色ハーフトーン" },
+    { "id": "zoom_blur", "name": "ズームブラー" },
+    { "id": "radial_blur", "name": "放射ブラー" },
+    { "id": "impact_flash", "name": "衝撃フラッシュ" },
+    { "id": "action_shake", "name": "アクション揺れ" },
+    { "id": "mirror", "name": "ミラー" },
+    { "id": "split_mirror", "name": "分割ミラー" },
+    { "id": "kaleidoscope", "name": "万華鏡" },
+    { "id": "pixelate", "name": "ドット化" },
+    { "id": "posterize", "name": "階調削減" },
+    { "id": "oil_paint", "name": "油絵" },
+    { "id": "watercolor", "name": "水彩" },
+    { "id": "pencil_sketch", "name": "鉛筆スケッチ" },
+    { "id": "pseudo_hdr", "name": "擬似HDR" },
+    { "id": "skin_tone", "name": "肌色補正" },
+    { "id": "auto_brightness", "name": "自動明るさ" },
+    { "id": "game_sharp", "name": "ゲーム鮮明化" },
+    { "id": "text_readability", "name": "文字視認性" },
+    { "id": "dark_game", "name": "暗いゲーム補正" },
+    { "id": "white_balance", "name": "ホワイトバランス" },
+    { "id": "spotlight", "name": "スポットライト" },
+    { "id": "iris_out", "name": "丸絞り暗転" },
+    { "id": "drifting_stars", "name": "流れ星" },
+    { "id": "drifting_hearts", "name": "ハート漂い" },
+    { "id": "heart_wipe", "name": "ハートワイプ" },
+    { "id": "heart_burst", "name": "広がって消えるハート" },
+    { "id": "heart_rain", "name": "ハート雨" },
+    { "id": "heart_float_up", "name": "ハート浮上" },
+    { "id": "heart_confetti", "name": "ハート紙吹雪" },
+    { "id": "heart_sparkle", "name": "ハートきらめき" },
+    { "id": "heart_tunnel", "name": "ハートトンネル" },
+    { "id": "heart_orbit_burst", "name": "回転ハートバースト" },
+    { "id": "hearts", "name": "ハート" },
+    { "id": "balloons", "name": "風船" },
+    { "id": "stars", "name": "流星" },
+    { "id": "snow", "name": "雪" }
   ],
   "font_presets": [
     {
@@ -36,26 +120,273 @@
     {
       "id": "effect_group_manga_pop",
       "name": "漫画ポップ",
-      "effects": ["bubble_round", "sparkle", "pop_in", "shake"],
-      "description": "吹き出しとポップ演出をまとめた基本セット"
+      "effects": ["sparkle", "pop_in", "shake", "star_reaction"],
+      "description": "文字のポップ演出をまとめた基本セット"
     },
     {
       "id": "effect_group_yume_kawaii",
       "name": "ゆめかわ",
-      "effects": ["bubble_soft", "heart", "float_in"],
+      "effects": ["heart", "float_in", "heart_reaction"],
       "description": "淡い色と軽い浮遊感のセット"
     }
   ],
+  "frame_presets": [
+    {
+      "id": "frame_manga_round",
+      "name": "漫画吹き出し",
+      "effects": ["bubble_round"],
+      "border_enabled": true,
+      "border_width": 5,
+      "border_color": "#111111",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.95,
+      "shadow_depth": 2,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 18,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.88,
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "普通の漫画の吹き出し"
+    },
+    {
+      "id": "frame_manga_jagged",
+      "name": "ギザギザ吹き出し",
+      "effects": ["bubble_round", "jagged"],
+      "border_enabled": true,
+      "border_width": 5,
+      "border_color": "#111111",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.95,
+      "shadow_depth": 2,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 18,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.88,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "普通の吹き出しをベースに外側をギザギザにした吹き出し"
+    },
+    {
+      "id": "frame_cloud_soft",
+      "name": "ふわふわ吹き出し",
+      "effects": ["bubble_soft"],
+      "border_enabled": true,
+      "border_width": 4,
+      "border_color": "#222222",
+      "bg_color": "#fffdf7",
+      "bg_opacity": 0.9,
+      "shadow_depth": 1,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 22,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.86,
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#fffdf7",
+      "description": "雲のようなふわふわした吹き出し"
+    },
+    {
+      "id": "frame_narration_top",
+      "name": "ナレーション上",
+      "effects": [],
+      "border_enabled": false,
+      "border_width": 0,
+      "border_color": "#000000",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.0,
+      "shadow_depth": 0,
+      "default_layout_id": "layout_top_center",
+      "clearance_px": 10,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.92,
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "画面上側に置く縁無しナレーション"
+    },
+    {
+      "id": "frame_narration_bottom",
+      "name": "ナレーション下",
+      "effects": [],
+      "border_enabled": false,
+      "border_width": 0,
+      "border_color": "#000000",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.0,
+      "shadow_depth": 0,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 10,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.92,
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "画面下側に置く縁無しナレーション"
+    }
+  ],
+  "screen_effect_stacks": [
+    {
+      "id": "screen_stack_cinema_soft",
+      "name": "シネマ柔らか",
+      "description": "落ち着いた色と軽い粒状感の組み合わせ",
+      "effects": [
+        { "id": "cinema", "intensity": 0.55, "speed": 1, "color": "#ffffff" },
+        { "id": "vignette", "intensity": 0.4, "speed": 1, "color": "#000000" },
+        { "id": "film_grain", "intensity": 0.25, "speed": 1, "color": "#ffffff" }
+      ]
+    },
+    {
+      "id": "screen_stack_vhs",
+      "name": "VHS風",
+      "description": "色ずれと走査線を重ねた昔の録画風",
+      "effects": [
+        { "id": "vhs", "intensity": 0.8, "speed": 1, "color": "#ffffff" },
+        { "id": "scanlines", "intensity": 0.7, "speed": 1, "color": "#ffffff" },
+        { "id": "glitch", "intensity": 0.35, "speed": 1.2, "color": "#ffffff" }
+      ]
+    },
+    {
+      "id": "screen_stack_neon",
+      "name": "ネオン夜景",
+      "description": "発色を強めて夜の街っぽく見せる",
+      "effects": [
+        { "id": "neon", "intensity": 0.75, "speed": 1, "color": "#ff66cc" },
+        { "id": "chromatic_aberration", "intensity": 0.4, "speed": 1, "color": "#66ccff" },
+        { "id": "disco", "intensity": 0.25, "speed": 0.6, "color": "#ffffff" }
+      ]
+    },
+    {
+      "id": "screen_stack_manga_impact",
+      "name": "漫画インパクト",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        { "id": "speed_lines", "intensity": 0.85, "speed": 1, "color": "#000000" },
+        { "id": "impact_flash", "intensity": 0.55, "speed": 1.2, "color": "#ffffff" },
+        { "id": "action_shake", "intensity": 0.35, "speed": 1.4, "color": "#ffffff" }
+      ]
+    },
+    {
+      "id": "screen_stack_anime_line",
+      "name": "アニメ輪郭",
+      "description": "輪郭と漫画トーンを重ねる",
+      "effects": [
+        { "id": "anime_edge", "intensity": 0.65, "speed": 1, "color": "#000000" },
+        { "id": "halftone", "intensity": 0.35, "speed": 1, "color": "#ffffff" }
+      ]
+    },
+    {
+      "id": "screen_stack_halftone_coarse",
+      "name": "網点粗め",
+      "description": "粗い印刷っぽい単色ハーフトーン",
+      "effects": [
+        { "id": "halftone", "intensity": 0.9, "speed": 1, "color": "#101010", "background_color": "#f7f1e3", "dot_density": 14, "dot_scale": 1.4, "contrast": 1, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "screen_stack_halftone_manga",
+      "name": "マンガトーン",
+      "description": "漫画のスクリーントーン風の単色網点",
+      "effects": [
+        { "id": "halftone", "intensity": 0.95, "speed": 1, "color": "#111111", "background_color": "#ffffff", "dot_density": 28, "dot_scale": 0.95, "contrast": 1.18, "rotation": 0.785398 },
+        { "id": "anime_edge", "intensity": 0.35, "speed": 1, "color": "#000000" }
+      ]
+    },
+    {
+      "id": "screen_stack_halftone_cdlabel",
+      "name": "CDレーベル",
+      "description": "昔のCD印刷っぽい細かい網点",
+      "effects": [
+        { "id": "halftone", "intensity": 0.85, "speed": 1, "color": "#202020", "background_color": "#fefefe", "dot_density": 42, "dot_scale": 0.68, "contrast": 0.95, "rotation": 0.261799 },
+        { "id": "vignette", "intensity": 0.18, "speed": 1, "color": "#000000" }
+      ]
+    },
+    {
+      "id": "screen_stack_fisheye_motion",
+      "name": "魚眼モーション",
+      "description": "魚眼と手ブレで動きを出す",
+      "effects": [
+        { "id": "fisheye", "intensity": 0.45, "speed": 1, "color": "#ffffff" },
+        { "id": "hand_tremor", "intensity": 0.35, "speed": 1.2, "color": "#ffffff" }
+      ]
+    },
+    {
+      "id": "screen_stack_zoom_action",
+      "name": "ズームアクション",
+      "description": "ズームブラーと集中線のアクション表現",
+      "effects": [
+        { "id": "zoom_blur", "intensity": 0.55, "speed": 1, "color": "#ffffff" },
+        { "id": "speed_lines", "intensity": 0.55, "speed": 1, "color": "#000000" }
+      ]
+    }
+  ],
   "layout_presets": [
+    {
+      "id": "layout_top_left",
+      "name": "上左",
+      "anchor": "top_left"
+    },
+    {
+      "id": "layout_top_center",
+      "name": "上中央",
+      "anchor": "top_center"
+    },
+    {
+      "id": "layout_top_right",
+      "name": "上右",
+      "anchor": "top_right"
+    },
+    {
+      "id": "layout_middle_left",
+      "name": "中央左",
+      "anchor": "middle_left"
+    },
+    {
+      "id": "layout_middle_center",
+      "name": "中央",
+      "anchor": "middle_center"
+    },
+    {
+      "id": "layout_middle_right",
+      "name": "中央右",
+      "anchor": "middle_right"
+    },
+    {
+      "id": "layout_bottom_left",
+      "name": "下左",
+      "anchor": "bottom_left"
+    },
     {
       "id": "layout_bottom_center",
       "name": "下中央",
       "anchor": "bottom_center"
     },
     {
-      "id": "layout_mid_lower",
-      "name": "やや下",
-      "anchor": "mid_lower"
+      "id": "layout_bottom_right",
+      "name": "下右",
+      "anchor": "bottom_right"
     }
-  ]
+  ],
+  "screen_effect_targets": {
+    "global_stack_ids": [],
+    "scene_stack_ids": {}
+  }
 }

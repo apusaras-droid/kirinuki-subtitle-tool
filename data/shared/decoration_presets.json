@@ -1,0 +1,2666 @@
+{
+  "effect_library": [
+    {
+      "id": "sparkle",
+      "name": "きらめき"
+    },
+    {
+      "id": "pop_in",
+      "name": "ポップイン"
+    },
+    {
+      "id": "shake",
+      "name": "揺れ"
+    },
+    {
+      "id": "float_in",
+      "name": "浮遊"
+    },
+    {
+      "id": "heart",
+      "name": "ハート"
+    },
+    {
+      "id": "star_reaction",
+      "name": "☆反応"
+    },
+    {
+      "id": "heart_reaction",
+      "name": "♡反応"
+    }
+  ],
+  "screen_effect_library": [
+    {
+      "id": "shutter_24fps",
+      "name": "24fpsシャッター"
+    },
+    {
+      "id": "sepia",
+      "name": "セピア"
+    },
+    {
+      "id": "disco",
+      "name": "ディスコ"
+    },
+    {
+      "id": "vignette",
+      "name": "ビネット"
+    },
+    {
+      "id": "cinema",
+      "name": "シネマ"
+    },
+    {
+      "id": "monochrome",
+      "name": "モノクロ"
+    },
+    {
+      "id": "old_tv",
+      "name": "古いテレビ"
+    },
+    {
+      "id": "vhs",
+      "name": "VHS"
+    },
+    {
+      "id": "crt",
+      "name": "CRT"
+    },
+    {
+      "id": "retro_game",
+      "name": "レトロゲーム"
+    },
+    {
+      "id": "neon",
+      "name": "ネオン"
+    },
+    {
+      "id": "cyberpunk",
+      "name": "サイバーパンク"
+    },
+    {
+      "id": "horror",
+      "name": "ホラー"
+    },
+    {
+      "id": "dream",
+      "name": "ドリーム"
+    },
+    {
+      "id": "rainy",
+      "name": "雨の日"
+    },
+    {
+      "id": "sunset",
+      "name": "夕焼け"
+    },
+    {
+      "id": "docu_low_sat",
+      "name": "ドキュメンタリー低彩度"
+    },
+    {
+      "id": "pop_high_sat",
+      "name": "ポップ高彩度"
+    },
+    {
+      "id": "noise",
+      "name": "ノイズ"
+    },
+    {
+      "id": "film_grain",
+      "name": "フィルム粒子"
+    },
+    {
+      "id": "scanlines",
+      "name": "走査線"
+    },
+    {
+      "id": "chromatic_aberration",
+      "name": "色ずれ"
+    },
+    {
+      "id": "edge_blur",
+      "name": "周辺ぼかし"
+    },
+    {
+      "id": "background_blur",
+      "name": "背景ぼかし"
+    },
+    {
+      "id": "highlight_subject",
+      "name": "中央強調"
+    },
+    {
+      "id": "shadow_boost",
+      "name": "暗部持ち上げ"
+    },
+    {
+      "id": "highlight_suppress",
+      "name": "白飛び抑制"
+    },
+    {
+      "id": "sharpen",
+      "name": "シャープ"
+    },
+    {
+      "id": "cinematic_border",
+      "name": "シネマ帯"
+    },
+    {
+      "id": "glitch",
+      "name": "グリッチ"
+    },
+    {
+      "id": "rgb_shift",
+      "name": "RGBシフト"
+    },
+    {
+      "id": "flash",
+      "name": "フラッシュ"
+    },
+    {
+      "id": "strobe",
+      "name": "ストロボ"
+    },
+    {
+      "id": "fade",
+      "name": "フェード"
+    },
+    {
+      "id": "shake",
+      "name": "シェイク"
+    },
+    {
+      "id": "hand_tremor",
+      "name": "手ぶれ"
+    },
+    {
+      "id": "miniature",
+      "name": "ミニチュア"
+    },
+    {
+      "id": "fisheye",
+      "name": "魚眼"
+    },
+    {
+      "id": "speed_lines",
+      "name": "集中線"
+    },
+    {
+      "id": "speed_lines_sparse",
+      "name": "集中線 荒め"
+    },
+    {
+      "id": "speed_lines_white",
+      "name": "集中線 白抜き"
+    },
+    {
+      "id": "speed_lines_slash",
+      "name": "斜めスピード線"
+    },
+    {
+      "id": "speed_lines_frame",
+      "name": "外周集中線"
+    },
+    {
+      "id": "speed_lines_burst",
+      "name": "爆発集中線"
+    },
+    {
+      "id": "speed_lines_outward",
+      "name": "外向き放射線"
+    },
+    {
+      "id": "anime_edge",
+      "name": "アニメ輪郭"
+    },
+    {
+      "id": "halftone",
+      "name": "単色ハーフトーン"
+    },
+    {
+      "id": "zoom_blur",
+      "name": "ズームブラー"
+    },
+    {
+      "id": "radial_blur",
+      "name": "放射ブラー"
+    },
+    {
+      "id": "impact_flash",
+      "name": "衝撃フラッシュ"
+    },
+    {
+      "id": "action_shake",
+      "name": "アクション揺れ"
+    },
+    {
+      "id": "mirror",
+      "name": "ミラー"
+    },
+    {
+      "id": "split_mirror",
+      "name": "分割ミラー"
+    },
+    {
+      "id": "kaleidoscope",
+      "name": "万華鏡"
+    },
+    {
+      "id": "pixelate",
+      "name": "ドット化"
+    },
+    {
+      "id": "posterize",
+      "name": "階調削減"
+    },
+    {
+      "id": "oil_paint",
+      "name": "油絵"
+    },
+    {
+      "id": "watercolor",
+      "name": "水彩"
+    },
+    {
+      "id": "pencil_sketch",
+      "name": "鉛筆スケッチ"
+    },
+    {
+      "id": "pseudo_hdr",
+      "name": "擬似HDR"
+    },
+    {
+      "id": "skin_tone",
+      "name": "肌色補正"
+    },
+    {
+      "id": "auto_brightness",
+      "name": "自動明るさ"
+    },
+    {
+      "id": "game_sharp",
+      "name": "ゲーム鮮明化"
+    },
+    {
+      "id": "text_readability",
+      "name": "文字視認性"
+    },
+    {
+      "id": "dark_game",
+      "name": "暗いゲーム補正"
+    },
+    {
+      "id": "white_balance",
+      "name": "ホワイトバランス"
+    },
+    {
+      "id": "spotlight",
+      "name": "スポットライト"
+    },
+    {
+      "id": "iris_out",
+      "name": "丸絞り暗転"
+    },
+    {
+      "id": "drifting_stars",
+      "name": "流れ星"
+    },
+    {
+      "id": "drifting_hearts",
+      "name": "ハート漂い"
+    },
+    {
+      "id": "heart_wipe",
+      "name": "ハートワイプ"
+    },
+    {
+      "id": "heart_burst",
+      "name": "広がって消えるハート"
+    },
+    {
+      "id": "heart_rain",
+      "name": "ハート雨"
+    },
+    {
+      "id": "heart_float_up",
+      "name": "ハート浮上"
+    },
+    {
+      "id": "heart_confetti",
+      "name": "ハート紙吹雪"
+    },
+    {
+      "id": "heart_sparkle",
+      "name": "ハートきらめき"
+    },
+    {
+      "id": "heart_tunnel",
+      "name": "ハートトンネル"
+    },
+    {
+      "id": "heart_orbit_burst",
+      "name": "回転ハートバースト"
+    },
+    {
+      "id": "hearts",
+      "name": "ハート"
+    },
+    {
+      "id": "balloons",
+      "name": "風船"
+    },
+    {
+      "id": "stars",
+      "name": "流星"
+    },
+    {
+      "id": "snow",
+      "name": "雪"
+    }
+  ],
+  "screen_effect_stacks": [
+    {
+      "id": "screen_stack_cinema_soft",
+      "name": "シネマ柔らか",
+      "description": "落ち着いた色と軽い粒状感の組み合わせ",
+      "effects": [
+        {
+          "id": "cinema",
+          "intensity": 0.55,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "vignette",
+          "intensity": 0.4,
+          "speed": 1,
+          "color": "#000000"
+        },
+        {
+          "id": "film_grain",
+          "intensity": 0.25,
+          "speed": 1,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_vhs",
+      "name": "VHS風",
+      "description": "色ずれと走査線を重ねた昔の録画風",
+      "effects": [
+        {
+          "id": "vhs",
+          "intensity": 0.8,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "scanlines",
+          "intensity": 0.7,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "glitch",
+          "intensity": 0.35,
+          "speed": 1.2,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_neon",
+      "name": "ネオン夜景",
+      "description": "発色を強めて夜の街っぽく見せる",
+      "effects": [
+        {
+          "id": "neon",
+          "intensity": 0.75,
+          "speed": 1,
+          "color": "#ff66cc"
+        },
+        {
+          "id": "chromatic_aberration",
+          "intensity": 0.4,
+          "speed": 1,
+          "color": "#66ccff"
+        },
+        {
+          "id": "disco",
+          "intensity": 0.25,
+          "speed": 0.6,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_horror",
+      "name": "ホラー",
+      "description": "暗く冷たい雰囲気を作る",
+      "effects": [
+        {
+          "id": "horror",
+          "intensity": 0.8,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "monochrome",
+          "intensity": 0.35,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "noise",
+          "intensity": 0.25,
+          "speed": 1,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_dream",
+      "name": "ドリーム",
+      "description": "軽いボケとやわらかな彩度で夢っぽくする",
+      "effects": [
+        {
+          "id": "dream",
+          "intensity": 0.6,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "fade",
+          "intensity": 0.2,
+          "speed": 0.8,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_manga_impact",
+      "name": "漫画インパクト",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000"
+        },
+        {
+          "id": "impact_flash",
+          "intensity": 0.55,
+          "speed": 1.2,
+          "color": "#ffffff"
+        },
+        {
+          "id": "action_shake",
+          "intensity": 0.35,
+          "speed": 1.4,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_anime_line",
+      "name": "アニメ輪郭",
+      "description": "輪郭と漫画トーンを重ねる",
+      "effects": [
+        {
+          "id": "anime_edge",
+          "intensity": 0.65,
+          "speed": 1,
+          "color": "#000000"
+        },
+        {
+          "id": "halftone",
+          "intensity": 0.35,
+          "speed": 1,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_halftone_coarse",
+      "name": "網点粗め",
+      "description": "粗い印刷っぽい単色ハーフトーン",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#101010",
+          "background_color": "#f7f1e3",
+          "dot_density": 14,
+          "dot_scale": 1.4,
+          "contrast": 1,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_halftone_manga",
+      "name": "マンガトーン",
+      "description": "漫画のスクリーントーン風の単色網点",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.95,
+          "speed": 1,
+          "color": "#111111",
+          "background_color": "#ffffff",
+          "dot_density": 28,
+          "dot_scale": 0.95,
+          "contrast": 1.18,
+          "rotation": 0.785398
+        },
+        {
+          "id": "anime_edge",
+          "intensity": 0.35,
+          "speed": 1,
+          "color": "#000000"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_halftone_cdlabel",
+      "name": "CDレーベル",
+      "description": "昔のCD印刷っぽい細かい網点",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#202020",
+          "background_color": "#fefefe",
+          "dot_density": 42,
+          "dot_scale": 0.68,
+          "contrast": 0.95,
+          "rotation": 0.261799
+        },
+        {
+          "id": "vignette",
+          "intensity": 0.18,
+          "speed": 1,
+          "color": "#000000"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_fisheye_motion",
+      "name": "魚眼モーション",
+      "description": "魚眼と手ブレで動きを出す",
+      "effects": [
+        {
+          "id": "fisheye",
+          "intensity": 0.45,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "hand_tremor",
+          "intensity": 0.35,
+          "speed": 1.2,
+          "color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_zoom_action",
+      "name": "ズームアクション",
+      "description": "ズームブラーと集中線のアクション表現",
+      "effects": [
+        {
+          "id": "zoom_blur",
+          "intensity": 0.55,
+          "speed": 1,
+          "color": "#ffffff"
+        },
+        {
+          "id": "speed_lines",
+          "intensity": 0.55,
+          "speed": 1,
+          "color": "#000000"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_heart_burst",
+      "name": "広がって消えるハート",
+      "description": "ハートの輪郭が広がりながらフェードアウトする",
+      "effects": [
+        {
+          "id": "heart_burst",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "expansion_speed": 1
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_heart_rain",
+      "name": "ハート雨",
+      "description": "画面上から小さなハートが降る",
+      "effects": [
+        {
+          "id": "heart_rain",
+          "intensity": 0.78,
+          "speed": 0.85,
+          "color": "#ff5ca8",
+          "symbol_count": 28,
+          "radius": 0.055
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_heart_float",
+      "name": "ハート浮上",
+      "description": "下からハートがふわっと浮かぶ",
+      "effects": [
+        {
+          "id": "heart_float_up",
+          "intensity": 0.72,
+          "speed": 0.7,
+          "color": "#ff83bd",
+          "symbol_count": 22,
+          "radius": 0.06
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_heart_confetti",
+      "name": "ハート紙吹雪",
+      "description": "中心からハートが弾ける",
+      "effects": [
+        {
+          "id": "heart_confetti",
+          "intensity": 0.85,
+          "speed": 1.25,
+          "color": "#ff5ca8",
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "symbol_count": 34,
+          "radius": 0.045
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_heart_sparkle",
+      "name": "ハートきらめき",
+      "description": "画面内で小さなハートが点滅する",
+      "effects": [
+        {
+          "id": "heart_sparkle",
+          "intensity": 0.72,
+          "speed": 1,
+          "color": "#ff7ec8",
+          "symbol_count": 26,
+          "radius": 0.04
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_heart_tunnel",
+      "name": "ハートトンネル",
+      "description": "ハートの輪郭が奥から迫るように広がる",
+      "effects": [
+        {
+          "id": "heart_tunnel",
+          "intensity": 0.8,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "position_x": 0.5,
+          "position_y": 0.5
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_59424272",
+      "name": "漫画インパクト2",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.026,
+          "edge_bias": 0.18,
+          "center_gap": 0.59,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "halftone",
+          "intensity": 0.6,
+          "speed": 1,
+          "color": "#101010",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 21,
+          "dot_scale": 0.9,
+          "contrast": 2,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.35,
+          "direction_angle": -35,
+          "symbol_count": 8,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_59476760",
+      "name": "マンガトーン",
+      "description": "漫画のスクリーントーン風の単色網点",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.95,
+          "speed": 1,
+          "color": "#111111",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 28,
+          "dot_scale": 0.95,
+          "contrast": 1.18,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "anime_edge",
+          "intensity": 0.35,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0.18,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_60775644",
+      "name": "漫画インパクト",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.1,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "impact_flash",
+          "intensity": 0.55,
+          "speed": 1.2,
+          "color": "#ffffff",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "action_shake",
+          "intensity": 0.35,
+          "speed": 1.4,
+          "color": "#ffffff",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 1,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_63116355",
+      "name": "漫画インパクト1",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.52,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_63345141",
+      "name": "ハート枠拡大",
+      "description": "中心から外側へハートの枠が広がる",
+      "effects": [
+        {
+          "id": "heart_expand",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "direction_angle": -35,
+          "symbol_count": 24,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_63362551",
+      "name": "ハート枠拡大",
+      "description": "中心から外側へハートの枠が広がる",
+      "effects": [
+        {
+          "id": "heart_expand",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "direction_angle": -35,
+          "symbol_count": 24,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_63666037",
+      "name": "漫画インパクト1",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.52,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_63683680",
+      "name": "ハート枠拡大",
+      "description": "中心から外側へハートの枠が広がる",
+      "effects": [
+        {
+          "id": "heart_expand",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "direction_angle": -35,
+          "symbol_count": 24,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_64246316",
+      "name": "漫画インパクト1",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.52,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_64268543",
+      "name": "ハート枠拡大",
+      "description": "中心から外側へハートの枠が広がる",
+      "effects": [
+        {
+          "id": "heart_expand",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "direction_angle": -35,
+          "symbol_count": 24,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_64495914",
+      "name": "漫画インパクト",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.1,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "impact_flash",
+          "intensity": 0.55,
+          "speed": 1.2,
+          "color": "#ffffff",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "action_shake",
+          "intensity": 0.35,
+          "speed": 1.4,
+          "color": "#ffffff",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 1,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_65426901",
+      "name": "CDレーベル1",
+      "description": "昔のCD印刷っぽい細かい網点",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#202020",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 64,
+          "dot_scale": 0.34,
+          "contrast": 2,
+          "rotation": 0.261799,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.35,
+          "direction_angle": -35,
+          "symbol_count": 8,
+          "expansion_speed": 1,
+          "background_color": "#fefefe"
+        },
+        {
+          "id": "vignette",
+          "intensity": 0.18,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.35,
+          "direction_angle": -35,
+          "symbol_count": 8,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_65633645",
+      "name": "CDレーベル1",
+      "description": "昔のCD印刷っぽい細かい網点",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#202020",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 38,
+          "dot_scale": 0.34,
+          "contrast": 2,
+          "rotation": 0.261799,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.35,
+          "direction_angle": -35,
+          "symbol_count": 8,
+          "expansion_speed": 1,
+          "background_color": "#fefefe"
+        },
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.1,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_65769657",
+      "name": "CDレーベル1",
+      "description": "昔のCD印刷っぽい細かい網点",
+      "effects": [
+        {
+          "id": "halftone",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#202020",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 38,
+          "dot_scale": 0.34,
+          "contrast": 2,
+          "rotation": 0.261799,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.35,
+          "direction_angle": -35,
+          "symbol_count": 8,
+          "expansion_speed": 1,
+          "background_color": "#fefefe"
+        },
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.1,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_99511806",
+      "name": "ハート紙吹雪",
+      "description": "中心からハートが弾ける",
+      "effects": [
+        {
+          "id": "heart_confetti",
+          "intensity": 0.85,
+          "speed": 1.25,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.045,
+          "direction_angle": -35,
+          "symbol_count": 34,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_99539763",
+      "name": "ハート枠拡大",
+      "description": "中心から外側へハートの枠が広がる",
+      "effects": [
+        {
+          "id": "heart_expand",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "direction_angle": -35,
+          "symbol_count": 24,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_99596410",
+      "name": "漫画インパクト",
+      "description": "集中線と衝撃フラッシュで強調する",
+      "effects": [
+        {
+          "id": "speed_lines",
+          "intensity": 0.85,
+          "speed": 1,
+          "color": "#000000",
+          "spokes": 96,
+          "line_width": 0.01,
+          "edge_bias": 0.18,
+          "center_gap": 0.1,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "impact_flash",
+          "intensity": 0.55,
+          "speed": 1.2,
+          "color": "#ffffff",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        },
+        {
+          "id": "action_shake",
+          "intensity": 0.35,
+          "speed": 1.4,
+          "color": "#ffffff",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 1,
+          "shake_speed": 1,
+          "glitch_band_count": 22,
+          "glitch_shift": 0.06,
+          "blur_samples": 6,
+          "blur_amount": 0.18,
+          "flash_frequency": 10,
+          "flash_power": 5,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 0,
+          "dot_scale": 0,
+          "contrast": 0,
+          "rotation": 0,
+          "mirror_split": 0,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0,
+          "position_y": 0,
+          "radius": 0,
+          "direction_angle": 0,
+          "symbol_count": 0,
+          "expansion_speed": 0,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_99607204",
+      "name": "ハート枠拡大",
+      "description": "中心から外側へハートの枠が広がる",
+      "effects": [
+        {
+          "id": "heart_expand",
+          "intensity": 0.9,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.18,
+          "direction_angle": -35,
+          "symbol_count": 24,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ]
+    },
+    {
+      "id": "screen_stack_00233355",
+      "name": "ハート浮上",
+      "description": "単体画面エフェクト",
+      "effects": [
+        {
+          "id": "heart_float_up",
+          "intensity": 0.72,
+          "speed": 0.7,
+          "color": "#ff83bd",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.06,
+          "direction_angle": -35,
+          "symbol_count": 22,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ],
+      "timing_mode": "full",
+      "timing_basis": "relative",
+      "effect_start_sec": 0,
+      "effect_end_sec": 4.5
+    },
+    {
+      "id": "screen_stack_01580308",
+      "name": "ハートトンネル",
+      "description": "単体画面エフェクト",
+      "effects": [
+        {
+          "id": "heart_tunnel",
+          "intensity": 0.8,
+          "speed": 1,
+          "color": "#ff5ca8",
+          "spokes": 0,
+          "line_width": 0,
+          "edge_bias": 0,
+          "center_gap": 0,
+          "fisheye_strength": 0,
+          "shake_strength": 0,
+          "shake_speed": 1,
+          "glitch_band_count": 0,
+          "glitch_shift": 0,
+          "blur_samples": 0,
+          "blur_amount": 0,
+          "flash_frequency": 0,
+          "flash_power": 0,
+          "grain_strength": 0,
+          "line_density": 0,
+          "line_opacity": 0,
+          "color_shift": 0,
+          "pixel_size": 0,
+          "posterize_levels": 0,
+          "edge_threshold": 0,
+          "tone_size": 0,
+          "dot_density": 24,
+          "dot_scale": 1,
+          "contrast": 1,
+          "rotation": 0.785398,
+          "mirror_split": 0.5,
+          "mirror_offset": 0,
+          "border_thickness": 0,
+          "border_color": "#000000",
+          "border_opacity": 0,
+          "color_temperature": 0,
+          "brightness_shift": 0,
+          "saturation_shift": 0,
+          "shadow_strength": 0,
+          "position_x": 0.5,
+          "position_y": 0.5,
+          "radius": 0.12,
+          "direction_angle": -35,
+          "symbol_count": 7,
+          "expansion_speed": 1,
+          "background_color": "#ffffff"
+        }
+      ],
+      "timing_mode": "full",
+      "timing_basis": "relative",
+      "effect_start_sec": 0,
+      "effect_end_sec": 4.5
+    }
+  ],
+  "font_presets": [
+    {
+      "id": "font_standard",
+      "name": "標準",
+      "family": "Yu Gothic",
+      "size": 44,
+      "color": "#ffffff",
+      "outline_color": "#000000",
+      "outline_width": 4,
+      "shadow_color": "#000000",
+      "shadow_depth": 4
+    },
+    {
+      "id": "font_pop",
+      "name": "ポップ",
+      "family": "Yu Gothic",
+      "size": 54,
+      "color": "#ff5fa8",
+      "outline_color": "#ffffff",
+      "outline_width": 5,
+      "shadow_color": "#6b4a5a",
+      "shadow_depth": 3
+    },
+    {
+      "id": "font_custom_59740767",
+      "name": "むらまこプリセット",
+      "family": "BIZ UDゴシック Bold",
+      "size": 70,
+      "color": "#ff80ff",
+      "outline_color": "#ffffff",
+      "outline_width": 10,
+      "shadow_color": "#000000",
+      "shadow_depth": 4
+    },
+    {
+      "id": "font_custom_70382613",
+      "name": "ぽむ卒業プリセット",
+      "family": "BIZ UDゴシック Bold",
+      "size": 70,
+      "color": "#ec4ad8",
+      "outline_color": "#ffffff",
+      "outline_width": 10,
+      "shadow_color": "#000000",
+      "shadow_depth": 4
+    }
+  ],
+  "effect_groups": [
+    {
+      "id": "effect_group_manga_pop",
+      "name": "漫画ポップ",
+      "effects": [
+        "sparkle",
+        "pop_in",
+        "shake",
+        "star_reaction"
+      ],
+      "description": "文字のポップ演出をまとめた基本セット"
+    },
+    {
+      "id": "effect_group_yume_kawaii",
+      "name": "ゆめかわ",
+      "effects": [
+        "heart",
+        "float_in",
+        "heart_reaction"
+      ],
+      "description": "淡い色と軽い浮遊感のセット"
+    },
+    {
+      "id": "effect_group_99492948",
+      "name": "カスタム 03",
+      "effects": [
+        "sparkle",
+        "pop_in",
+        "shake",
+        "star_reaction"
+      ],
+      "description": "手動追加グループ"
+    }
+  ],
+  "frame_presets": [
+    {
+      "id": "frame_manga_round",
+      "name": "漫画吹き出し",
+      "effects": [
+        "bubble_round"
+      ],
+      "border_enabled": true,
+      "border_width": 5,
+      "border_color": "#111111",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.95,
+      "shadow_depth": 2,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 35,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.88,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "普通の漫画の吹き出し"
+    },
+    {
+      "id": "frame_manga_jagged",
+      "name": "ギザギザ吹き出し",
+      "effects": [
+        "bubble_round",
+        "jagged"
+      ],
+      "border_enabled": true,
+      "border_width": 5,
+      "border_color": "#111111",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.95,
+      "shadow_depth": 2,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 18,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.88,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "普通の吹き出しをベースに外側をギザギザにした吹き出し"
+    },
+    {
+      "id": "frame_cloud_soft",
+      "name": "ふわふわ吹き出し",
+      "effects": [
+        "bubble_soft"
+      ],
+      "border_enabled": true,
+      "border_width": 4,
+      "border_color": "#222222",
+      "bg_color": "#fffdf7",
+      "bg_opacity": 0.9,
+      "shadow_depth": 1,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 22,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.86,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#fffdf7",
+      "description": "雲のようなふわふわした吹き出し"
+    },
+    {
+      "id": "frame_narration_top",
+      "name": "ナレーション上",
+      "effects": [],
+      "border_enabled": false,
+      "border_width": 0,
+      "border_color": "#000000",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0,
+      "shadow_depth": 0,
+      "default_layout_id": "layout_top_center",
+      "clearance_px": 10,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.92,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "画面上側に置く縁無しナレーション"
+    },
+    {
+      "id": "frame_narration_bottom",
+      "name": "ナレーション下",
+      "effects": [],
+      "border_enabled": false,
+      "border_width": 0,
+      "border_color": "#000000",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0,
+      "shadow_depth": 0,
+      "default_layout_id": "layout_bottom_center",
+      "clearance_px": 10,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.92,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": false,
+      "halftone_scale": 16,
+      "halftone_dot_size": 2,
+      "halftone_opacity": 0.24,
+      "halftone_color": "#ffffff",
+      "description": "画面下側に置く縁無しナレーション"
+    },
+    {
+      "id": "frame_custom_70323766",
+      "name": "ハーフトーン漫画枠",
+      "effects": [
+        "bubble_round"
+      ],
+      "border_enabled": false,
+      "border_width": 5,
+      "border_color": "#111111",
+      "bg_color": "#ffffff",
+      "bg_opacity": 0.95,
+      "shadow_depth": 2,
+      "default_layout_id": "layout_top_center",
+      "clearance_px": 35,
+      "clearance_factor": 0.5,
+      "wrap_ratio": 0.88,
+      "jagged_outer_px": 14,
+      "jagged_inner_px": 5,
+      "jagged_spacing_px": 28,
+      "jagged_spacing_min_jitter_px": 4,
+      "jagged_spacing_max_jitter_px": 6,
+      "jagged_pattern": "alternate",
+      "halftone_enabled": true,
+      "halftone_scale": 64,
+      "halftone_dot_size": 1,
+      "halftone_opacity": 0.16,
+      "halftone_color": "#ffffff",
+      "description": "普通の漫画の吹き出し"
+    }
+  ],
+  "layout_presets": [
+    {
+      "id": "layout_top_left",
+      "name": "上左",
+      "anchor": "top_left"
+    },
+    {
+      "id": "layout_top_center",
+      "name": "上中央",
+      "anchor": "top_center"
+    },
+    {
+      "id": "layout_top_right",
+      "name": "上右",
+      "anchor": "top_right"
+    },
+    {
+      "id": "layout_top_left_inner",
+      "name": "上左 内寄せ",
+      "anchor": "top_left",
+      "offset_x_px": 120,
+      "offset_y_px": 70
+    },
+    {
+      "id": "layout_top_center_lower",
+      "name": "上中央 やや下",
+      "anchor": "top_center",
+      "offset_y_px": 70
+    },
+    {
+      "id": "layout_top_right_inner",
+      "name": "上右 内寄せ",
+      "anchor": "top_right",
+      "offset_x_px": -120,
+      "offset_y_px": 70
+    },
+    {
+      "id": "layout_middle_left",
+      "name": "中央左",
+      "anchor": "middle_left"
+    },
+    {
+      "id": "layout_middle_center",
+      "name": "中央",
+      "anchor": "middle_center"
+    },
+    {
+      "id": "layout_middle_right",
+      "name": "中央右",
+      "anchor": "middle_right"
+    },
+    {
+      "id": "layout_middle_left_inner",
+      "name": "中央左 内寄せ",
+      "anchor": "middle_left",
+      "offset_x_px": 120
+    },
+    {
+      "id": "layout_middle_center_upper",
+      "name": "中央 やや上",
+      "anchor": "middle_center",
+      "offset_y_px": -90
+    },
+    {
+      "id": "layout_middle_right_inner",
+      "name": "中央右 内寄せ",
+      "anchor": "middle_right",
+      "offset_x_px": -120
+    },
+    {
+      "id": "layout_bottom_left",
+      "name": "下左",
+      "anchor": "bottom_left",
+      "offset_y_px": 18
+    },
+    {
+      "id": "layout_bottom_center",
+      "name": "下中央",
+      "anchor": "bottom_center",
+      "offset_y_px": 18
+    },
+    {
+      "id": "layout_bottom_right",
+      "name": "下右",
+      "anchor": "bottom_right",
+      "offset_y_px": 18
+    },
+    {
+      "id": "layout_bottom_left_inner",
+      "name": "下左 内寄せ",
+      "anchor": "bottom_left",
+      "offset_x_px": 120,
+      "offset_y_px": 18
+    },
+    {
+      "id": "layout_bottom_center_low",
+      "name": "下中央 さらに下",
+      "anchor": "bottom_center",
+      "offset_y_px": 42
+    },
+    {
+      "id": "layout_bottom_right_inner",
+      "name": "下右 内寄せ",
+      "anchor": "bottom_right",
+      "offset_x_px": -120,
+      "offset_y_px": 18
+    }
+  ],
+  "screen_effect_targets": {
+    "global_stack_ids": [],
+    "scene_stack_ids": {}
+  },
+  "updated_at": "2026-07-01T04:47:54.667918+00:00"
+}

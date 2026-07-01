@@ -2,6 +2,7 @@
 
 このツールは `python -m backend` からCLI実行できます。
 他のプログラムからは、JSON設定をファイルに出して `run-pipeline` を呼ぶのが最も安定です。
+CLI は GUI の別実装ではなく、同じ core 処理を部品単位で呼ぶ入口です。
 
 ## 入口
 
@@ -32,6 +33,14 @@ python -m backend --help
 5. `create-edit-plan` でカット案を作る
 6. `preview` で仮出力を作る
 7. `export` で最終出力を作る
+
+## 設計の前提
+
+- GUI は実行結果のビューア兼編集器
+- CLI は自動化向けの部品実行器
+- core が唯一の業務ロジック
+- `edit_plan.json` と `decoration_project.json` を正本にする
+- 画面装飾は GUI 専用表現と export 反映用表現を分けて管理する
 
 外部プログラムからまとめて回すなら `run-pipeline` を使います。
 ドラッグ&ドロップ用の preset 定義は `scripts/process-video.presets.json` にあります。

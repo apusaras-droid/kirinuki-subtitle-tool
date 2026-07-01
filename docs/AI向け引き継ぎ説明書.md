@@ -19,11 +19,12 @@
 ## このリポジトリの考え方
 
 - 元動画は直接破壊しない
-- 中心データは `edit_plan.json`
+- 中心データは `edit_plan.json` と `decoration_project.json`
 - 字幕本文は Whisper が担当
 - 区間判定は無音検出や VAD を補助的に使う
 - 最終的な編集結果は編集案を経由する
 - 配布と復旧をしやすくするため、BAT と CLI を残している
+- GUI はラッパー、CLI は部品実行器、core が唯一の正本
 
 ## いまの安定した入口
 
@@ -51,6 +52,16 @@ python -m backend run-pipeline --config docs/cli-run-pipeline.sample.json --repo
 5. `create-edit-plan`
 6. `preview`
 7. `export`
+
+## いまの設計修正方針
+
+継ぎ足しで整合性が崩れやすくなっているため、次の順で整理する。
+
+1. core に処理を寄せる
+2. CLI を core の部品呼び出しに固定する
+3. GUI は編集と実行ボタンに限定する
+4. decoration は別の正本に分ける
+5. export は decoration と edit_plan の両方を参照する
 
 ## 現在の既定
 
