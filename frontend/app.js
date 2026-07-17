@@ -53,6 +53,12 @@ const state = {
   frameSyncMode: "live",
   screenEffectSelectedStackId: "",
   screenEffectCategoryFilter: "all",
+  zoomBox: {
+    active: false,
+    centerX: 0.5,
+    centerY: 0.5,
+    widthRatio: 0.8,
+  },
   decorationShaderPreview: {
     gl: null,
     program: null,
@@ -73,6 +79,7 @@ let taskProgressTimer = null;
 let backendProgressTimer = null;
 let activeTaskProgress = null;
 const TASK_DURATION_HISTORY_KEY = "kirinuki_task_duration_history_v1";
+const ZOOM_BOX_PRESETS_KEY = "kirinuki_zoom_box_presets_v1";
 const TASK_FALLBACK_ESTIMATE_SEC = {
   "動画読み込み": 20,
   "音声抽出": 30,
@@ -1279,6 +1286,7 @@ function setAppPage(page) {
     updateDecorationPreviewFilters();
     renderDecorationShaderFrame();
   }
+  updateZoomBoxOverlay();
   window.scrollTo(0, 0);
 }
 
@@ -1377,6 +1385,172 @@ function buildSourceRanges(duration, splitMinutes = 20) {
 
 function roundTime(value) {
   return Math.round((Number(value) || 0) * 1000) / 1000;
+}
+
+function defaultZoomBoxPresets() {
+  return [
+    { id: "wide_133", name: "ワイド 1.33x", centerX: 0.5, centerY: 0.5, widthRatio: 0.75 },
+    { id: "medium_178", name: "標準 1.78x", centerX: 0.5, centerY: 0.5, widthRatio: 0.5625 },
+    { id: "close_238", name: "寄り 2.38x", centerX: 0.5, centerY: 0.5, widthRatio: 0.42 },
+    { id: "face_top", name: "上寄せ 1.78x", centerX: 0.5, centerY: 0.38, widthRatio: 0.5625 },
+    { id: "left_focus", name: "左寄せ 1.78x", centerX: 0.35, centerY: 0.5, widthRatio: 0.5625 },
+    { id: "right_focus", name: "右寄せ 1.78x", centerX: 0.65, centerY: 0.5, widthRatio: 0.5625 },
+  ];
+}
+
+function customZoomBoxPresets() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ZOOM_BOX_PRESETS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function zoomBoxPresets() {
+  return [...defaultZoomBoxPresets(), ...customZoomBoxPresets()];
+}
+
+function saveCustomZoomBoxPreset(preset) {
+  const current = customZoomBoxPresets();
+  current.push({
+    id: preset.id || `zoom_box_${Date.now()}`,
+    name: preset.name || "拡大枠プリセット",
+    centerX: Math.max(0, Math.min(1, Number(preset.centerX) || 0.5)),
+    centerY: Math.max(0, Math.min(1, Number(preset.centerY) || 0.5)),
+    widthRatio: Math.max(0.2, Math.min(1, Number(preset.widthRatio) || 0.75)),
+  });
+  localStorage.setItem(ZOOM_BOX_PRESETS_KEY, JSON.stringify(current));
+}
+
+function clampZoomBox(box = state.zoomBox) {
+  const widthRatio = Math.max(0.2, Math.min(1, Number(box.widthRatio) || 0.75));
+  const heightRatio = widthRatio * 9 / 16;
+  return {
+    active: box.active !== false,
+    centerX: Math.max(widthRatio / 2, Math.min(1 - widthRatio / 2, Number(box.centerX) || 0.5)),
+    centerY: Math.max(heightRatio / 2, Math.min(1 - heightRatio / 2, Number(box.centerY) || 0.5)),
+    widthRatio,
+  };
+}
+
+function syncZoomInputsFromBox() {
+  const box = clampZoomBox();
+  const zoomScale = $("zoomBoxScaleInput");
+  const zoomX = $("zoomBoxXInput");
+  const zoomY = $("zoomBoxYInput");
+  if (zoomScale) zoomScale.value = (1 / box.widthRatio).toFixed(2);
+  if (zoomX) zoomX.value = box.centerX.toFixed(2);
+  if (zoomY) zoomY.value = box.centerY.toFixed(2);
+}
+
+function updateZoomBoxOverlay() {
+  const overlay = $("zoomBoxOverlay");
+  const frame = $("zoomBoxFrame");
+  const stage = $("decorationPreviewStage");
+  const previewVideo = $("decorationPreviewVideo");
+  if (!overlay || !frame || !stage || !previewVideo) return;
+  const visible = state.decorationEditTab === "zoom" && state.appPage === "previewCheck";
+  overlay.classList.toggle("hidden-panel", !visible);
+  if (!visible) return;
+  const stageRect = stage.getBoundingClientRect();
+  const videoRect = previewVideo.getBoundingClientRect();
+  const left = Math.max(0, videoRect.left - stageRect.left);
+  const top = Math.max(0, videoRect.top - stageRect.top);
+  const width = Math.max(1, videoRect.width);
+  const height = Math.max(1, videoRect.height);
+  overlay.style.left = `${left}px`;
+  overlay.style.top = `${top}px`;
+  overlay.style.width = `${width}px`;
+  overlay.style.height = `${height}px`;
+  overlay.style.right = "auto";
+  overlay.style.bottom = "auto";
+  state.zoomBox = clampZoomBox(state.zoomBox);
+  const box = state.zoomBox;
+  const frameWidth = width * box.widthRatio;
+  const frameHeight = frameWidth * 9 / 16;
+  frame.style.left = `${box.centerX * width}px`;
+  frame.style.top = `${box.centerY * height}px`;
+  frame.style.width = `${frameWidth}px`;
+  frame.style.height = `${frameHeight}px`;
+  syncZoomInputsFromBox();
+}
+
+function setZoomBoxFromInputs() {
+  state.zoomBox = clampZoomBox({
+    active: true,
+    centerX: Number($("zoomBoxXInput")?.value) || state.zoomBox.centerX,
+    centerY: Number($("zoomBoxYInput")?.value) || state.zoomBox.centerY,
+    widthRatio: 1 / Math.max(0.25, Math.min(5, Number($("zoomBoxScaleInput")?.value) || 1.25)),
+  });
+  updateZoomBoxOverlay();
+}
+
+function bindZoomBoxOverlayInteraction() {
+  const overlay = $("zoomBoxOverlay");
+  const frame = $("zoomBoxFrame");
+  const handle = $("zoomBoxHandle");
+  if (!overlay || !frame || !handle || overlay.dataset.bound === "1") return;
+  overlay.dataset.bound = "1";
+  let dragMode = "";
+  let startPointer = null;
+  let startBox = null;
+  const normalizedPoint = (event) => {
+    const rect = overlay.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height))),
+    };
+  };
+  const beginDrag = (event, mode) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragMode = mode;
+    startPointer = normalizedPoint(event);
+    startBox = clampZoomBox(state.zoomBox);
+    overlay.setPointerCapture?.(event.pointerId);
+  };
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target === handle) {
+      beginDrag(event, "resize");
+      return;
+    }
+    if (event.target === frame || frame.contains(event.target)) {
+      beginDrag(event, "move");
+      return;
+    }
+    const point = normalizedPoint(event);
+    state.zoomBox = clampZoomBox({ ...state.zoomBox, active: true, centerX: point.x, centerY: point.y });
+    updateZoomBoxOverlay();
+  });
+  overlay.addEventListener("pointermove", (event) => {
+    if (!dragMode || !startPointer || !startBox) return;
+    const point = normalizedPoint(event);
+    if (dragMode === "move") {
+      state.zoomBox = clampZoomBox({
+        ...startBox,
+        centerX: startBox.centerX + (point.x - startPointer.x),
+        centerY: startBox.centerY + (point.y - startPointer.y),
+      });
+    } else if (dragMode === "resize") {
+      const maxWidthByX = Math.max(0.2, 2 * Math.min(startBox.centerX, 1 - startBox.centerX));
+      const maxWidthByY = Math.max(0.2, 2 * Math.min(startBox.centerY, 1 - startBox.centerY) * 16 / 9);
+      const maxWidth = Math.max(0.2, Math.min(1, maxWidthByX, maxWidthByY));
+      const nextWidth = Math.max(0.2, Math.min(maxWidth, Math.abs(point.x - startBox.centerX) * 2));
+      state.zoomBox = clampZoomBox({ ...startBox, widthRatio: nextWidth });
+    }
+    updateZoomBoxOverlay();
+  });
+  const endDrag = (event) => {
+    if (!dragMode) return;
+    overlay.releasePointerCapture?.(event.pointerId);
+    dragMode = "";
+    startPointer = null;
+    startBox = null;
+  };
+  overlay.addEventListener("pointerup", endDrag);
+  overlay.addEventListener("pointercancel", endDrag);
+  window.addEventListener("resize", updateZoomBoxOverlay);
 }
 
 function setSourceRanges(ranges, selectIndex = 0) {
@@ -2454,6 +2628,7 @@ function screenEffectLibrary() {
     { id: "speed_lines_outward", name: "外向き放射線" },
     { id: "anime_edge", name: "アニメ輪郭" },
     { id: "halftone", name: "単色ハーフトーン" },
+    { id: "video_zoom", name: "拡大・縮小" },
     { id: "zoom_blur", name: "ズームブラー" },
     { id: "radial_blur", name: "放射ブラー" },
     { id: "impact_flash", name: "衝撃フラッシュ" },
@@ -2505,12 +2680,14 @@ function speedLineEffectIds() {
 function screenEffectCategories() {
   return [
     { id: "all", name: "すべて" },
+    { id: "zoom", name: "拡大・縮小" },
     { id: "video_shader", name: "動画加工" },
     { id: "overlay", name: "重ねる効果" },
   ];
 }
 
 function screenEffectCategory(effectId) {
+  if (String(effectId || "").trim() === "video_zoom") return "zoom";
   const overlayIds = new Set([
     "speed_lines",
     "speed_lines_sparse",
@@ -2784,6 +2961,7 @@ function normalizeScreenEffectItem(effect) {
     position_x: numberOrDefault(effect?.position_x, defaults.position_x),
     position_y: numberOrDefault(effect?.position_y, defaults.position_y),
     radius: numberOrDefault(effect?.radius, defaults.radius),
+    zoom_scale: numberOrDefault(effect?.zoom_scale, defaults.zoom_scale),
     direction_angle: numberOrDefault(effect?.direction_angle, defaults.direction_angle),
     symbol_count: numberOrDefault(effect?.symbol_count, defaults.symbol_count),
     expansion_speed: numberOrDefault(effect?.expansion_speed, defaults.expansion_speed),
@@ -2835,6 +3013,7 @@ function screenEffectItemDefaults(effectId) {
     position_x: 0.5,
     position_y: 0.5,
     radius: 0.35,
+    zoom_scale: 1.25,
     direction_angle: -35,
     symbol_count: 8,
     expansion_speed: 1,
@@ -2842,6 +3021,8 @@ function screenEffectItemDefaults(effectId) {
     background_color: "#ffffff",
   };
   switch (String(effectId || "").trim()) {
+    case "video_zoom":
+      return { ...base, intensity: 1, speed: 1, zoom_scale: 1.25, position_x: 0.5, position_y: 0.5, color: "#000000" };
     case "speed_lines":
       return { ...base, intensity: 0.85, speed: 1, color: "#000000", spokes: 96, line_width: 0.01, edge_bias: 0.18, center_gap: 0.10, glitch_band_count: 22, glitch_shift: 0.06, blur_samples: 6, blur_amount: 0.18, flash_frequency: 10, flash_power: 5 };
     case "speed_lines_sparse":
@@ -3044,6 +3225,12 @@ function screenEffectItemDefaults(effectId) {
 
 function screenEffectParameterSpecs(effectId) {
   switch (String(effectId || "").trim()) {
+    case "video_zoom":
+      return [
+        { key: "zoom_scale", label: "拡大率", min: 0.25, max: 3.0, step: 0.01, format: (v) => `${Number(v).toFixed(2)}x` },
+        { key: "position_x", label: "中心X", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "position_y", label: "中心Y", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+      ];
     case "speed_lines":
     case "speed_lines_sparse":
     case "speed_lines_white":
@@ -4550,8 +4737,9 @@ function currentDecorationEvent() {
 }
 
 function setDecorationEditTab(tab) {
-  state.decorationEditTab = ["text", "frame", "text_effect", "screen_effect"].includes(tab) ? tab : "text";
+  state.decorationEditTab = ["text", "frame", "text_effect", "zoom", "screen_effect"].includes(tab) ? tab : "text";
   renderDecorationPage();
+  updateZoomBoxOverlay();
 }
 
 function decorationEventForSubtitle(sub) {
@@ -4815,8 +5003,9 @@ function renderDecorationPage() {
   $("decorationPreviewLabel").textContent = state.decorationPreviewUrl ? "生成済み" : "未生成";
   $("textEffectSection")?.classList.toggle("hidden-panel", state.decorationEditTab !== "text_effect");
   $("screenEffectSection")?.classList.toggle("hidden-panel", state.decorationEditTab !== "screen_effect");
+  updateZoomBoxOverlay();
   if (previewVideo) {
-    const nextSrc = state.decorationPreviewUrl || "";
+    const nextSrc = state.decorationPreviewUrl || (state.decorationEditTab === "zoom" ? state.sourceVideoUrl || "" : "");
     if ((previewVideo.dataset.currentSrc || "") !== nextSrc) {
       const wasPlaying = !previewVideo.paused && !previewVideo.ended;
       previewVideo.pause();
@@ -4859,6 +5048,7 @@ function renderDecorationPage() {
         { id: "text", label: "テキスト" },
         { id: "frame", label: "枠" },
         { id: "text_effect", label: "文字連動" },
+        { id: "zoom", label: "拡大・縮小" },
         { id: "screen_effect", label: "画面効果" },
       ].forEach((tab) => {
         const button = document.createElement("button");
@@ -4882,6 +5072,8 @@ function renderDecorationPage() {
       frameFields.className = `decoration-fields${state.decorationEditTab !== "frame" ? " hidden-panel" : ""}`;
       const effectFields = document.createElement("div");
       effectFields.className = `decoration-fields${state.decorationEditTab !== "text_effect" ? " hidden-panel" : ""}`;
+      const zoomFields = document.createElement("div");
+      zoomFields.className = `decoration-fields${state.decorationEditTab !== "zoom" ? " hidden-panel" : ""}`;
 
       const fontPreset = presetOptions(decorationFontPresets(), selected.font_preset_id || activeFont.id || "", "");
       fontPreset.addEventListener("change", () => {
@@ -5464,9 +5656,259 @@ function renderDecorationPage() {
       });
       effectFields.appendChild(applyEffectGlobalBtn);
 
+      const zoomScale = document.createElement("input");
+      zoomScale.id = "zoomBoxScaleInput";
+      zoomScale.type = "number";
+      zoomScale.min = "0.25";
+      zoomScale.max = "3";
+      zoomScale.step = "0.01";
+      zoomScale.value = "1.25";
+      zoomScale.addEventListener("change", setZoomBoxFromInputs);
+      const zoomX = document.createElement("input");
+      zoomX.id = "zoomBoxXInput";
+      zoomX.type = "number";
+      zoomX.min = "0";
+      zoomX.max = "1";
+      zoomX.step = "0.01";
+      zoomX.value = "0.50";
+      zoomX.addEventListener("change", setZoomBoxFromInputs);
+      const zoomY = document.createElement("input");
+      zoomY.id = "zoomBoxYInput";
+      zoomY.type = "number";
+      zoomY.min = "0";
+      zoomY.max = "1";
+      zoomY.step = "0.01";
+      zoomY.value = "0.50";
+      zoomY.addEventListener("change", setZoomBoxFromInputs);
+      const currentZoomBox = clampZoomBox(state.zoomBox);
+      zoomScale.value = (1 / currentZoomBox.widthRatio).toFixed(2);
+      zoomX.value = currentZoomBox.centerX.toFixed(2);
+      zoomY.value = currentZoomBox.centerY.toFixed(2);
+      const zoomBoxPreset = document.createElement("select");
+      const fillZoomBoxPresetOptions = () => {
+        zoomBoxPreset.textContent = "";
+        zoomBoxPresets().forEach((preset) => {
+          const option = document.createElement("option");
+          option.value = preset.id;
+          option.textContent = preset.name;
+          zoomBoxPreset.appendChild(option);
+        });
+      };
+      fillZoomBoxPresetOptions();
+      zoomBoxPreset.addEventListener("change", () => {
+        const preset = zoomBoxPresets().find((item) => item.id === zoomBoxPreset.value);
+        if (!preset) return;
+        state.zoomBox = clampZoomBox({
+          active: true,
+          centerX: preset.centerX,
+          centerY: preset.centerY,
+          widthRatio: preset.widthRatio,
+        });
+        syncZoomInputsFromBox();
+        updateZoomBoxOverlay();
+      });
+      const zoomPreset = document.createElement("select");
+      const zoomRelatedPresets = [
+        {
+          id: "zoom_in_soft",
+          name: "少し拡大",
+          scale: 1.18,
+          effects: [],
+        },
+        {
+          id: "zoom_in_blur",
+          name: "拡大 + ズームブラー",
+          scale: 1.32,
+          effects: [
+            { id: "zoom_blur", intensity: 0.35, speed: 1.0, blur_samples: 5, blur_amount: 0.12, color: "#ffffff" },
+          ],
+        },
+        {
+          id: "zoom_in_focus",
+          name: "拡大 + スポットライト",
+          scale: 1.25,
+          effects: [
+            { id: "spotlight", intensity: 0.45, speed: 1.0, radius: 0.38, color: "#000000" },
+          ],
+        },
+        {
+          id: "zoom_in_action",
+          name: "拡大 + 手ブレ",
+          scale: 1.22,
+          effects: [
+            { id: "action_shake", intensity: 0.25, speed: 1.35, shake_strength: 0.9, color: "#ffffff" },
+          ],
+        },
+        {
+          id: "zoom_in_impact",
+          name: "拡大 + 集中線",
+          scale: 1.28,
+          effects: [
+            { id: "speed_lines", intensity: 0.55, speed: 1.0, color: "#000000", center_gap: 0.26, spokes: 72, line_width: 0.012 },
+          ],
+        },
+        {
+          id: "zoom_in_flash",
+          name: "拡大 + 衝撃フラッシュ",
+          scale: 1.25,
+          effects: [
+            { id: "impact_flash", intensity: 0.42, speed: 1.2, flash_frequency: 10, flash_power: 5, color: "#ffffff" },
+          ],
+        },
+        {
+          id: "zoom_out",
+          name: "縮小 黒背景",
+          scale: 0.82,
+          effects: [],
+        },
+        {
+          id: "zoom_out_spot",
+          name: "縮小 + スポットライト",
+          scale: 0.78,
+          effects: [
+            { id: "spotlight", intensity: 0.55, speed: 1.0, radius: 0.45, color: "#000000" },
+          ],
+        },
+      ];
+      zoomRelatedPresets.forEach((preset) => {
+        const option = document.createElement("option");
+        option.value = preset.id;
+        option.textContent = preset.name;
+        zoomPreset.appendChild(option);
+      });
+      zoomPreset.value = "zoom_in_soft";
+      const selectedZoomPreset = () => zoomRelatedPresets.find((preset) => preset.id === zoomPreset.value) || zoomRelatedPresets[0];
+      const applyZoomPresetToInputs = () => {
+        const preset = selectedZoomPreset();
+        zoomScale.value = String(preset.scale ?? 1.25);
+      };
+      zoomPreset.addEventListener("change", applyZoomPresetToInputs);
+      const zoomTarget = document.createElement("select");
+      [
+        { id: "scene", name: "現在シーン" },
+        { id: "global", name: "全体" },
+      ].forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        zoomTarget.appendChild(option);
+      });
+      zoomTarget.value = "scene";
+      const zoomTiming = document.createElement("select");
+      [
+        { id: "full", name: "対象全体" },
+        { id: "custom", name: "時間指定" },
+      ].forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        zoomTiming.appendChild(option);
+      });
+      const zoomStart = document.createElement("input");
+      zoomStart.placeholder = "開始 秒";
+      zoomStart.value = "0.000";
+      const zoomEnd = document.createElement("input");
+      zoomEnd.placeholder = "終了 秒";
+      zoomEnd.value = selected ? Math.max(0.1, Number(selected.end_sec || 0) - Number(selected.start_sec || 0)).toFixed(3) : "3.000";
+      const addZoomBtn = document.createElement("button");
+      addZoomBtn.type = "button";
+      addZoomBtn.className = "primary";
+      addZoomBtn.textContent = "拡大・縮小を追加";
+      addZoomBtn.addEventListener("click", () => {
+        if (!state.decorationProject) return;
+        const targetSceneId = zoomTarget.value === "scene" ? ensureScreenEffectSceneIdForCurrentSelection() : "";
+        if (zoomTarget.value === "scene" && !targetSceneId) {
+          setStatus("現在シーンを判定できません。字幕イベントを選択してください。", true);
+          return;
+        }
+        const scale = Math.max(0.25, Math.min(3, Number(zoomScale.value) || 1));
+        const nextId = `screen_stack_zoom_${String(Date.now()).slice(-8)}_${Math.random().toString(16).slice(2, 6)}`;
+        const startSec = Math.max(0, parseTime(zoomStart.value || "0"));
+        const endSec = Math.max(startSec, parseTime(zoomEnd.value || String(startSec + 1)));
+        const preset = selectedZoomPreset();
+        const effect = normalizeScreenEffectItem({
+          id: "video_zoom",
+          zoom_scale: scale,
+          position_x: Math.max(0, Math.min(1, Number(zoomX.value) || 0.5)),
+          position_y: Math.max(0, Math.min(1, Number(zoomY.value) || 0.5)),
+          intensity: 1,
+          speed: 1,
+          color: "#000000",
+        });
+        const relatedEffects = (preset.effects || []).map((item) => normalizeScreenEffectItem({
+          ...item,
+          position_x: item.position_x ?? effect.position_x,
+          position_y: item.position_y ?? effect.position_y,
+        }));
+        const nextStack = {
+          id: nextId,
+          name: preset.name || (scale >= 1 ? "拡大" : "縮小"),
+          description: "シーンの長さを変えずに映像を拡大・縮小し、関連する画面効果を重ねる",
+          effects: [effect, ...relatedEffects],
+          timing_mode: zoomTiming.value || "full",
+          timing_basis: zoomTarget.value === "global" ? "absolute" : "relative",
+          effect_start_sec: roundTime(startSec),
+          effect_end_sec: roundTime(endSec),
+        };
+        state.decorationProject.screen_effect_stacks = [...(state.decorationProject.screen_effect_stacks || []), nextStack];
+        if (zoomTarget.value === "scene") addScreenEffectStackToTarget(nextId, "scene", targetSceneId);
+        else addScreenEffectStackToTarget(nextId, "global");
+        state.screenEffectSelectedStackId = nextId;
+        setStatus(`${nextStack.name}を${zoomTarget.value === "scene" ? "現在シーン" : "全体"}へ追加しました`);
+        renderDecorationPage();
+      });
+      const openZoomBoxEditorBtn = document.createElement("button");
+      openZoomBoxEditorBtn.type = "button";
+      openZoomBoxEditorBtn.textContent = "プレビュー上で赤枠編集";
+      openZoomBoxEditorBtn.addEventListener("click", () => {
+        state.zoomBox = clampZoomBox({
+          active: true,
+          centerX: Number(zoomX.value) || 0.5,
+          centerY: Number(zoomY.value) || 0.5,
+          widthRatio: 1 / Math.max(0.25, Math.min(3, Number(zoomScale.value) || 1.25)),
+        });
+        setAppPage("previewCheck");
+        setDecorationEditTab("zoom");
+        updateZoomBoxOverlay();
+      });
+      const saveZoomBoxPresetBtn = document.createElement("button");
+      saveZoomBoxPresetBtn.type = "button";
+      saveZoomBoxPresetBtn.textContent = "赤枠をプリセット登録";
+      saveZoomBoxPresetBtn.addEventListener("click", () => {
+        const name = window.prompt("赤枠プリセット名", `拡大枠 ${new Date().toLocaleTimeString()}`);
+        if (!name) return;
+        const box = clampZoomBox(state.zoomBox);
+        saveCustomZoomBoxPreset({
+          id: `zoom_box_${Date.now()}`,
+          name: name.trim() || "拡大枠",
+          centerX: box.centerX,
+          centerY: box.centerY,
+          widthRatio: box.widthRatio,
+        });
+        fillZoomBoxPresetOptions();
+        setStatus("赤枠プリセットを保存しました");
+      });
+      const zoomNote = document.createElement("p");
+      zoomNote.className = "muted";
+      zoomNote.textContent = "1.00より大きいと拡大、1.00より小さいと縮小します。縮小で余る部分は黒背景になります。";
+      zoomFields.appendChild(makeField("演出項目", zoomPreset));
+      zoomFields.appendChild(makeField("赤枠プリセット", zoomBoxPreset));
+      zoomFields.appendChild(makeField("対象", zoomTarget));
+      zoomFields.appendChild(makeField("適用時間", zoomTiming));
+      zoomFields.appendChild(makeField("開始", zoomStart));
+      zoomFields.appendChild(makeField("終了", zoomEnd));
+      zoomFields.appendChild(makeField("拡大率", zoomScale));
+      zoomFields.appendChild(makeField("中心X", zoomX));
+      zoomFields.appendChild(makeField("中心Y", zoomY));
+      zoomFields.appendChild(openZoomBoxEditorBtn);
+      zoomFields.appendChild(saveZoomBoxPresetBtn);
+      zoomFields.appendChild(addZoomBtn);
+      zoomFields.appendChild(zoomNote);
+
       detail.appendChild(textFields);
       detail.appendChild(frameFields);
       detail.appendChild(effectFields);
+      detail.appendChild(zoomFields);
     }
   }
 
@@ -5553,6 +5995,14 @@ function renderDecorationPage() {
       state.decorationSelectionId = eventItem.id;
       setDecorationEditTab("text_effect");
     });
+    const zoomAction = document.createElement("button");
+    zoomAction.type = "button";
+    zoomAction.textContent = "拡大";
+    zoomAction.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.decorationSelectionId = eventItem.id;
+      setDecorationEditTab("zoom");
+    });
     const screenAction = document.createElement("button");
     screenAction.type = "button";
     screenAction.textContent = "画面";
@@ -5567,6 +6017,7 @@ function renderDecorationPage() {
     item.appendChild(textAction);
     item.appendChild(frameAction);
     item.appendChild(effectAction);
+    item.appendChild(zoomAction);
     item.appendChild(screenAction);
     item.addEventListener("click", () => {
       state.decorationSelectionId = eventItem.id;
@@ -6008,6 +6459,18 @@ function renderScreenEffectStackSection() {
   presetBar.appendChild(presetLabel);
   const presetGroups = [
     {
+      id: "zoom",
+      name: "拡大縮小",
+      presets: [
+        { name: "少し拡大", effect: { id: "video_zoom", intensity: 1.0, speed: 1.0, zoom_scale: 1.18, position_x: 0.5, position_y: 0.5, color: "#000000" } },
+        { name: "強め拡大", effect: { id: "video_zoom", intensity: 1.0, speed: 1.0, zoom_scale: 1.45, position_x: 0.5, position_y: 0.5, color: "#000000" } },
+        { name: "少し縮小", effect: { id: "video_zoom", intensity: 1.0, speed: 1.0, zoom_scale: 0.82, position_x: 0.5, position_y: 0.5, color: "#000000" } },
+        { name: "ズームブラー", effect: { id: "zoom_blur", intensity: 0.55, speed: 1.0, blur_samples: 6, blur_amount: 0.18, color: "#ffffff" } },
+        { name: "スポット拡大", effect: { id: "spotlight", intensity: 0.55, speed: 1.0, position_x: 0.5, position_y: 0.45, radius: 0.38, color: "#000000" } },
+        { name: "手ブレ拡大", effect: { id: "action_shake", intensity: 0.28, speed: 1.35, shake_strength: 0.9, color: "#ffffff" } },
+      ],
+    },
+    {
       id: "speed",
       name: "集中線",
       presets: [
@@ -6061,6 +6524,9 @@ function renderScreenEffectStackSection() {
       id: "action",
       name: "アクション/注目",
       presets: [
+        { name: "少し拡大", effect: { id: "video_zoom", intensity: 1.0, speed: 1.0, zoom_scale: 1.18, position_x: 0.5, position_y: 0.5, color: "#000000" } },
+        { name: "強め拡大", effect: { id: "video_zoom", intensity: 1.0, speed: 1.0, zoom_scale: 1.45, position_x: 0.5, position_y: 0.5, color: "#000000" } },
+        { name: "少し縮小", effect: { id: "video_zoom", intensity: 1.0, speed: 1.0, zoom_scale: 0.82, position_x: 0.5, position_y: 0.5, color: "#000000" } },
         { name: "スポットライト", effect: { id: "spotlight", intensity: 0.72, speed: 1.0, position_x: 0.5, position_y: 0.45, radius: 0.34, color: "#000000" } },
         { name: "丸絞り暗転", effect: { id: "iris_out", intensity: 1.0, speed: 1.0, position_x: 0.5, position_y: 0.5, radius: 0.65, color: "#000000" } },
         { name: "ズームブラー", effect: { id: "zoom_blur", intensity: 0.55, speed: 1.0, blur_samples: 6, blur_amount: 0.18, color: "#ffffff" } },
@@ -7275,11 +7741,13 @@ if (decorationPreviewVideoEl) {
   decorationPreviewVideoEl.addEventListener("loadedmetadata", () => {
     updateDecorationPreviewFilters();
     renderDecorationShaderFrame();
+    updateZoomBoxOverlay();
   });
   decorationPreviewVideoEl.addEventListener("playing", startDecorationShaderLoop);
   decorationPreviewVideoEl.addEventListener("pause", stopDecorationShaderLoop);
   decorationPreviewVideoEl.addEventListener("ended", stopDecorationShaderLoop);
 }
+bindZoomBoxOverlayInteraction();
 $("decorationAddGroupBtn").addEventListener("click", () => {
   if (!state.projectId) {
     setStatus("先に動画を読み込んでください", true);

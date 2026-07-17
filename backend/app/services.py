@@ -1200,12 +1200,38 @@ def generate_screen_effect_overlays(
     return overlays
 
 
+def ffmpeg_video_zoom_filter(effect: dict, start_sec: float | None = None, end_sec: float | None = None) -> str | None:
+    item = dict(effect or {})
+    zoom_scale = max(0.25, min(3.0, float(item.get("zoom_scale", 1.0) or 1.0)))
+    if abs(zoom_scale - 1.0) < 0.001:
+        return None
+    cx = max(0.0, min(1.0, float(item.get("position_x", 0.5) or 0.5)))
+    cy = max(0.0, min(1.0, float(item.get("position_y", 0.5) or 0.5)))
+    if start_sec is not None and end_sec is not None and end_sec > start_sec:
+        active = f"between(T\\,{float(start_sec):.3f}\\,{float(end_sec):.3f})"
+        z_expr = f"if({active}\\,{zoom_scale:.5f}\\,1)"
+    else:
+        z_expr = f"{zoom_scale:.5f}"
+    src_x = f"W*{cx:.5f}+(X-W*{cx:.5f})/({z_expr})"
+    src_y = f"H*{cy:.5f}+(Y-H*{cy:.5f})/({z_expr})"
+    valid = f"between({src_x}\\,0\\,W-1)*between({src_y}\\,0\\,H-1)"
+    return (
+        "format=rgba,"
+        f"geq=r='if({valid}\\,r({src_x}\\,{src_y})\\,0)':"
+        f"g='if({valid}\\,g({src_x}\\,{src_y})\\,0)':"
+        f"b='if({valid}\\,b({src_x}\\,{src_y})\\,0)':"
+        "a='alpha(X\\,Y)',format=yuv420p"
+    )
+
+
 def ffmpeg_screen_effect_filter(effect: dict) -> str | None:
     item = dict(effect or {})
     effect_id = str(item.get("id") or "").strip()
     intensity = max(0.0, min(1.0, float(item.get("intensity", 1.0) or 0.0)))
     if intensity <= 0:
         return None
+    if effect_id == "video_zoom":
+        return ffmpeg_video_zoom_filter(item)
     if effect_id == "shutter_24fps":
         return "fps=24"
     if effect_id == "sepia":
@@ -1501,6 +1527,13 @@ def build_screen_effect_filter_chain(plan: dict, decoration: dict) -> tuple[str,
                     continue
                 scoped = True
             for effect in stack.get("effects") or []:
+                effect_id = str(effect.get("id") or "").strip()
+                if effect_id == "video_zoom":
+                    filter_expr = ffmpeg_video_zoom_filter(effect, effect_start, effect_end) if scoped else ffmpeg_video_zoom_filter(effect)
+                    if filter_expr:
+                        applied.append(effect_id)
+                        filter_parts.append(filter_expr)
+                    continue
                 filter_expr = ffmpeg_screen_effect_filter(effect)
                 if not filter_expr:
                     continue
@@ -3473,6 +3506,7 @@ def load_decoration_presets() -> dict:
             {"id": "speed_lines_outward", "name": "外向き放射線"},
             {"id": "anime_edge", "name": "アニメ輪郭"},
             {"id": "halftone", "name": "単色ハーフトーン"},
+            {"id": "video_zoom", "name": "拡大・縮小"},
             {"id": "zoom_blur", "name": "ズームブラー"},
             {"id": "radial_blur", "name": "放射ブラー"},
             {"id": "impact_flash", "name": "衝撃フラッシュ"},

@@ -56,6 +56,7 @@
     { "id": "speed_lines_outward", "name": "外向き放射線" },
     { "id": "anime_edge", "name": "アニメ輪郭" },
     { "id": "halftone", "name": "単色ハーフトーン" },
+    { "id": "video_zoom", "name": "拡大・縮小" },
     { "id": "zoom_blur", "name": "ズームブラー" },
     { "id": "radial_blur", "name": "放射ブラー" },
     { "id": "impact_flash", "name": "衝撃フラッシュ" },
