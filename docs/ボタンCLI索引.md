@@ -63,7 +63,9 @@
 
 | ボタン | CLI / API | 正本 |
 |---|---|---|
-| 480pプレビュー作成 | `render_decoration_video` / `/api/decoration/render` | `preview/decorated_preview.mp4` |
+| 480p/15秒点検プレビュー | `render_decoration_video` / `/api/decoration/render` | `preview/decorated_preview.mp4` |
+| 現在字幕だけ480p | `render_decoration_video` / `/api/decoration/render` | `preview/decorated_preview.mp4` |
+| 240p/3fps軽量プレビュー | `/api/decoration/render` (`max_height=240`, `fps=3`) | `preview/decorated_preview.mp4` |
 | 再生 / 停止 | GUI 補助 | UI 状態 |
 | デコレーションへ戻る | GUI 補助 | UI 状態 |
 

@@ -1,6 +1,8 @@
 # 切り抜き字幕作成ツール MVP
 
-ローカルブラウザで動画の指定範囲を処理し、音声抽出、文字起こし、SRT生成、無音削除案、字幕編集、完成予定プレビュー、最終出力を行うMVPです。
+ローカルブラウザで動画の指定範囲を処理し、音声抽出、文字起こし、無音削除案、字幕編集、ASS字幕、装飾、プレビュー、最終出力を工程別に行う動画編集支援ツールです。
+
+文書の正本と用途は [docs/README.md](docs/README.md) に整理しています。実装変更時は、この索引から仕様、工程契約、CLI契約、検証項目を確認してください。
 
 配布方針と必要な同梱物は [配布仕様書_GPLv3.md](docs/%E9%85%8D%E5%B8%83%E4%BB%95%E6%A7%98%E6%9B%B8_GPLv3.md) にまとめています。
 配布向けの雛形は `licenses/` にあります。
@@ -124,7 +126,7 @@ GUI を使わずに一括処理したい場合は `run-pipeline` を使います
 JSON 設定で実行する例は [docs/cli-run-pipeline.sample.json](docs/cli-run-pipeline.sample.json) を参照してください。
 `run-pipeline` は `subtitles` 配列を受け取れるので、AI や外部オーケストレータから文字起こしを省いて編集・出力だけ回すこともできます。
 Whisper の既定エンジンは `whisper.cpp` です。Whisper は本文と大まかな時刻の取得に使い、編集は無音削除後のタイムラインに再マッピングします。
-無音・非発話区間の検出は `silencedetect` を使います。
+無音・非発話区間の検出はプリセットに応じて `silencedetect` または Silero VAD を使います。BGMが強い素材では、解析用の声抽出を併用できます。
 `run-pipeline --auto-cleanup` で処理後の重い中間ファイルを自動整理できます。
 仕様準拠の自動チェックは `scripts/verify-spec.ps1` で実行できます。フル経路のスモークテスト単体は `scripts/smoke-test.ps1` です。
 外部プログラムからの呼び出し手順は [docs/外部CLI連携.md](docs/%E5%A4%96%E9%83%A8CLI%E9%80%A3%E6%90%BA.md) にまとめています。
@@ -150,14 +152,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\make-release.ps1
 - `subtitles/original.srt`
 - `subtitles/aligned.srt`
 - `subtitles/edited.srt`
+- `subtitles/final.ass` または出力先の通常ASS/装飾ASS
 - `analysis/waveform.json`
 - `analysis/waveform.png`
 - `edit_plan.json`
 - `preview/preview_low.mp4`
 - `output/final.mp4`
-- `output/final.srt`
+- `output/final.ass`
+- `output/edit_plan_final.json`
 
 元動画は直接編集しません。処理の中心は `edit_plan.json` です。
+
+SRTは文字起こし・編集互換用の内部形式として保持します。通常の配布字幕はASSを標準とし、外部ASS、動画への焼き込み、MKVへのASS字幕トラック埋め込みを選択できます。装飾を含めない通常ASSと、デコレーション設定を含む装飾ASSは別の出力です。
 
 ## License
 
@@ -175,4 +181,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\make-release.ps1
 - 既定モデル: `tools/whisper.cpp/models/ggml-large-v3.bin`
 - UIのモデル欄には `large-v3` またはモデルファイルのフルパスを指定できます。
 - 最終出力で字幕を焼き込む場合は GUI の「字幕を焼き込む」または CLI/API の `burn_subtitles=true` を使ってください。既定は無効です。
-- 字幕フォント、サイズ、黒縁は SRT には保存されません。焼き込み時の見た目にだけ反映されます。
+- 字幕フォント、サイズ、色、縁は通常ASSへ保存できます。SRTにはスタイル情報を保存できません。
