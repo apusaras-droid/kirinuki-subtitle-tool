@@ -144,6 +144,10 @@ $setupText = Get-Content -LiteralPath (Join-Path $repoRoot "setup.bat") -Raw
 $setupProfilesPresent = $setupText -match 'install_minimal' -and $setupText -match 'install_standard' -and $setupText -match 'install_full' -and $setupText -match 'check-installation\.ps1'
 Add-Check $checks "setup.profiles" "Setup menu exposes minimal, standard, full, and status paths" $setupProfilesPresent
 
+$launcherText = Get-Content -LiteralPath (Join-Path $repoRoot "scripts\launch-server.ps1") -Raw
+$launcherUsesAsciiSafeChildPath = $launcherText -match '%ROOT%\\\.venv\\Scripts\\python\.exe' -and $launcherText -match '\$childPythonCommand'
+Add-Check $checks "launcher.unicode-path" "Launcher child script avoids absolute non-ASCII Python paths" $launcherUsesAsciiSafeChildPath
+
 $requirementsText = Get-Content -LiteralPath (Join-Path $repoRoot "requirements.txt") -Raw
 $standardRequirementsText = Get-Content -LiteralPath (Join-Path $repoRoot "requirements-standard.txt") -Raw
 $fullRequirementsText = Get-Content -LiteralPath (Join-Path $repoRoot "requirements-full.txt") -Raw

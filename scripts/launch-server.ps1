@@ -143,10 +143,13 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $venvPython = Join-Path $root '.venv\Scripts\python.exe'
 if ($env:CUTSUBTITLE_PYTHON -and (Test-Path -LiteralPath $env:CUTSUBTITLE_PYTHON)) {
   $python = (Resolve-Path -LiteralPath $env:CUTSUBTITLE_PYTHON).Path
+  $childPythonCommand = '"%CUTSUBTITLE_PYTHON%"'
 } elseif (Test-Path -LiteralPath $venvPython) {
   $python = (Resolve-Path -LiteralPath $venvPython).Path
+  $childPythonCommand = '"%ROOT%\.venv\Scripts\python.exe"'
 } else {
   $python = (Get-Command python -ErrorAction Stop).Source
+  $childPythonCommand = 'python'
 }
 $localVersion = Get-LocalBuildId -Root $root
 $selectedPort = $Port
@@ -179,7 +182,7 @@ if (-not (Test-PortOpen -HostName $HostName -Port $selectedPort)) {
     '@echo off'
     'set "ROOT=%~dp0.."'
     'cd /d "%ROOT%"'
-    ('"' + $python + '" -m uvicorn backend.app.main:app --host ' + $HostName + ' --port ' + $selectedPort + ' >> "%~dp0server-' + $selectedPort + '.log" 2>&1')
+    ($childPythonCommand + ' -m uvicorn backend.app.main:app --host ' + $HostName + ' --port ' + $selectedPort + ' >> "%~dp0server-' + $selectedPort + '.log" 2>&1')
   ) | Set-Content -LiteralPath $childScript -Encoding ASCII
 
   $startParams = @{

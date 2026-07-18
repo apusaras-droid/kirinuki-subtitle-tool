@@ -27,15 +27,12 @@ goto parse_args
 echo [launcher] host=%HOST_NAME% port=%PORT%
 if "%HIDDEN%"=="1" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%~dp0scripts\launch-server.ps1' -HostName $env:HOST_NAME -Port ([int]$env:PORT) -Hidden -NoBrowser"
+) else if "%OPEN_BROWSER%"=="1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%~dp0scripts\launch-server.ps1' -HostName $env:HOST_NAME -Port ([int]$env:PORT)"
 ) else (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%~dp0scripts\launch-server.ps1' -HostName $env:HOST_NAME -Port ([int]$env:PORT) -NoBrowser"
 )
 set "EXIT_CODE=%ERRORLEVEL%"
-
-if "%OPEN_BROWSER%"=="1" (
-  echo [launcher] opening browser http://%HOST_NAME%:%PORT%
-  start "" "http://%HOST_NAME%:%PORT%"
-)
 
 echo.
 echo [launcher] exit code: %EXIT_CODE%
