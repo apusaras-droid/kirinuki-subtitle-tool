@@ -74,7 +74,7 @@ $checks.Add((New-Check "license.thirdparty" "Third-party notices exist" (Test-Pa
 $checks.Add((New-Check "license.whisper" "whisper.cpp notice exists" (Test-PathExists (Join-Path $PSScriptRoot "..\licenses\MIT-whisper.cpp.txt"))))
 $checks.Add((New-Check "license.ffmpeg" "FFmpeg notice exists" (Test-PathExists (Join-Path $PSScriptRoot "..\licenses\FFmpeg-notice.txt"))))
 $checks.Add((New-Check "whisper.cpp.exe" "whisper.cpp executable exists" (Test-PathExists (Join-Path $PSScriptRoot "..\tools\whisper.cpp\bin\whisper-cli.exe"))))
-$checks.Add((New-Check "whisper.cpp.model" "whisper.cpp model exists" (Test-PathExists (Join-Path $PSScriptRoot "..\tools\whisper.cpp\models\ggml-large-v3.bin"))))
+$checks.Add((New-Check "whisper.cpp.model" "default whisper.cpp small model exists" (Test-PathExists (Join-Path $PSScriptRoot "..\tools\whisper.cpp\models\ggml-small.bin"))))
 $checks.Add((New-Check "cli.help" "CLI help works" (Test-CommandOk { python -m backend --help }) "Run python -m backend --help"))
 $checks.Add((New-Check "server.root" "Local API/GUI responds" (Test-Server -Url $ServerUrl) $ServerUrl))
 

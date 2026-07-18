@@ -34,10 +34,12 @@ foreach ($group in $groups) {
 }
 
 $whisperExe = Join-Path $RepoRoot "tools\whisper.cpp\bin\whisper-cli.exe"
-$largeModel = Join-Path $RepoRoot "tools\whisper.cpp\models\ggml-large-v3.bin"
 $vadModel = Join-Path $RepoRoot "tools\whisper.cpp\models\ggml-silero-v6.2.0.bin"
 Write-Result "whisper.cpp executable" (Test-Path -LiteralPath $whisperExe)
-Write-Result "Whisper large-v3 model" (Test-Path -LiteralPath $largeModel)
+foreach ($modelName in @("base", "small", "medium", "large-v3")) {
+  $modelPath = Join-Path $RepoRoot "tools\whisper.cpp\models\ggml-$modelName.bin"
+  Write-Result "Whisper $modelName model" (Test-Path -LiteralPath $modelPath)
+}
 Write-Result "Silero VAD model" (Test-Path -LiteralPath $vadModel)
 
 $localFfmpeg = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "tools\ffmpeg") -Filter "ffmpeg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1

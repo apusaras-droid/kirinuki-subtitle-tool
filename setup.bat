@@ -107,12 +107,39 @@ if errorlevel 1 goto :install_fail
 goto :install_complete
 
 :install_models
+set "MODEL_PROFILE="
+cls
+echo ============================================================
+echo  Whisper.cpp Model Setup
+echo ============================================================
+echo.
+echo  [1] Base + Silero VAD       - fastest test model
+echo  [2] Small + Silero VAD      - app default, recommended
+echo  [3] Medium + Silero VAD     - higher accuracy
+echo  [4] Large-v3 + Silero VAD   - highest local accuracy
+echo  [5] All transcription models + Silero VAD
+echo  [0] Back
+echo.
+set "MODEL_CHOICE="
+set /p "MODEL_CHOICE=Select a number: "
+if "%MODEL_CHOICE%"=="0" goto :menu
+if "%MODEL_CHOICE%"=="1" set "MODEL_PROFILE=model-base"
+if "%MODEL_CHOICE%"=="2" set "MODEL_PROFILE=model-small"
+if "%MODEL_CHOICE%"=="3" set "MODEL_PROFILE=model-medium"
+if "%MODEL_CHOICE%"=="4" set "MODEL_PROFILE=model-large-v3"
+if "%MODEL_CHOICE%"=="5" set "MODEL_PROFILE=model-all"
+if not defined MODEL_PROFILE (
+  echo Invalid selection.
+  pause
+  goto :install_models
+)
 call :reset_status
 call :prepare_python
 if errorlevel 1 goto :install_fail
 echo [setup] downloading or verifying local AI models...
-call "%SCRIPT_DIR%download-runtime.bat" models
+call "%SCRIPT_DIR%download-runtime.bat" %MODEL_PROFILE%
 if errorlevel 1 goto :install_fail
+set "MODEL_PROFILE="
 goto :install_complete
 
 :check_status

@@ -3,7 +3,9 @@ param(
   [string]$PythonExe = "python",
   [ValidateSet("minimal", "standard", "full", "models")]
   [string]$Profile = "standard",
-  [string[]]$Models = @("large-v3", "silero-v6.2.0"),
+  [string[]]$Models = @(),
+  [ValidateSet("default", "base", "small", "medium", "large-v3", "all")]
+  [string]$ModelSet = "default",
   [switch]$SkipPip,
   [string]$StatusPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..")).Path "logs\setup-status.txt")
 )
@@ -155,6 +157,23 @@ $whisperModelMap = @{
   "silero-v6.2.0" = @{
     Url = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
     Sha256 = "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"
+  }
+}
+
+if ($Models.Count -eq 0) {
+  $Models = switch ($ModelSet) {
+    "base" { @("base", "silero-v6.2.0") }
+    "small" { @("small", "silero-v6.2.0") }
+    "medium" { @("medium", "silero-v6.2.0") }
+    "large-v3" { @("large-v3", "silero-v6.2.0") }
+    "all" { @("base", "small", "medium", "large-v3", "silero-v6.2.0") }
+    default {
+      if ($Profile -eq "full") {
+        @("small", "large-v3", "silero-v6.2.0")
+      } else {
+        @("small", "silero-v6.2.0")
+      }
+    }
   }
 }
 
