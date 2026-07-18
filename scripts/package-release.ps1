@@ -117,6 +117,7 @@ $sourceRoot = Join-Path $releaseRoot "source"
 $licensesRoot = Join-Path $releaseRoot "licenses"
 $buildInfoRoot = Join-Path $licensesRoot "build-info"
 $appBuildInfoRoot = Join-Path $appRoot "licenses\build-info"
+$sourceBuildInfoRoot = Join-Path $sourceRoot "licenses\build-info"
 
 Remove-Item -LiteralPath $releaseRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $appRoot, $sourceRoot, $licensesRoot, $buildInfoRoot | Out-Null
@@ -183,7 +184,7 @@ $appItems = @(
 
 Copy-SelectedPaths -SourceRoot $repoRoot -DestinationRoot $sourceRoot -RelativePaths $sourceItems
 Copy-SelectedPaths -SourceRoot $repoRoot -DestinationRoot $appRoot -RelativePaths $appItems
-New-Item -ItemType Directory -Force -Path $appBuildInfoRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $appBuildInfoRoot, $sourceBuildInfoRoot | Out-Null
 
 if ($IncludeModels) {
   Copy-SelectedPaths -SourceRoot $repoRoot -DestinationRoot $appRoot -RelativePaths @("tools\whisper.cpp\models")
@@ -232,7 +233,7 @@ $whisperHashes = @(Get-ChildItem -LiteralPath $whisperBin -File | Sort-Object Na
     $fileHash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
     "$($fileHash.Hash)  $($_.Name)"
   }) -join "`r`n"
-foreach ($targetBuildInfoRoot in @($buildInfoRoot, $appBuildInfoRoot)) {
+foreach ($targetBuildInfoRoot in @($buildInfoRoot, $appBuildInfoRoot, $sourceBuildInfoRoot)) {
   Write-TextFile -Path (Join-Path $targetBuildInfoRoot "commit.txt") -Content $commit
   Write-TextFile -Path (Join-Path $targetBuildInfoRoot "environment.txt") -Content $environment
   Write-TextFile -Path (Join-Path $targetBuildInfoRoot "dependency-lock.txt") -Content $dependencyLock
