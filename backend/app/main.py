@@ -25,6 +25,8 @@ from .services import (
     detect_silence,
     detect_vad_speech_intervals,
     extract_audio,
+    finish_transcription_progress,
+    prepare_audio_track_preview,
     render_from_plan_data,
     normalize_edit_plan_source_video,
     probe_video,
@@ -38,21 +40,43 @@ from .services import (
     load_project_subtitles,
     list_projects,
     list_system_fonts,
+    normalize_ass_subtitle_style,
     preset_catalog,
     build_scene_catalog_from_subtitles,
     delete_project,
     project_source_video,
     project_processing_progress,
     transcribe_audio,
+    transcribe_audio_range,
     render_decoration_video,
     export_cut_video_with_decoration_ass,
     build_decoration_ass,
+    choose_output_directory,
+    configured_export_directory,
+    open_directory_in_file_manager,
+    publish_export_result,
     save_project_decoration,
     save_shared_decoration_presets,
     launch_mpv,
     update_project_info,
 )
 from .srt import write_srt
+from .app_settings import load_app_settings, save_app_settings
+from .gemini_service import (
+    analyze_project_with_gemini,
+    apply_gemini_proposal,
+    gemini_config_status,
+    gemini_model_status,
+    link_project_knowledge_base,
+    list_shared_knowledge_bases,
+    load_project_knowledge_base,
+    load_gemini_proposal,
+    research_project_knowledge,
+    register_project_knowledge_as_shared,
+    save_gemini_config,
+    save_project_knowledge_base,
+    transcribe_project_with_gemini,
+)
 
 app = FastAPI(title="切り抜き字幕作成ツール MVP")
 app.add_middleware(
@@ -162,6 +186,12 @@ class ExtractAudioRequest(BaseModel):
     start_sec: float
     end_sec: float
     compute_profile: str = "auto"
+    audio_stream_index: int | None = None
+
+
+class AudioTrackPreviewRequest(BaseModel):
+    project_id: str
+    audio_stream_index: int
 
 
 class TranscribeRequest(BaseModel):
@@ -176,7 +206,7 @@ class TranscribeRequest(BaseModel):
     voice_isolation_enabled: bool = False
     use_isolated_voice_for_vad: bool = False
     use_isolated_voice_for_whisper: bool = False
-    vad_threshold: float = 0.25
+    vad_threshold: float = 0.5
     vad_min_speech_duration_ms: int = 100
     vad_min_silence_duration_ms: int = 80
     vad_speech_pad_ms: int = 50
@@ -186,6 +216,32 @@ class TranscribeRequest(BaseModel):
     merge_silence_gap_sec: float = 0.5
     align_timestamps: bool = False
     use_whisperx_alignment: bool = False
+
+
+class RangeTranscribeRequest(BaseModel):
+    project_id: str
+    start_sec: float
+    end_sec: float
+    subtitles: list[dict[str, Any]] = []
+    replacement_mode: str = "text_and_timing"
+    analysis_padding_sec: float = 1.5
+    language: str = "ja"
+    model: str = "small"
+    compute_profile: str = "auto"
+    engine: str = "whisper.cpp-vad"
+    detection_mode: str = "vad"
+    voice_isolation_enabled: bool = False
+    use_isolated_voice_for_vad: bool = False
+    use_isolated_voice_for_whisper: bool = False
+    vad_threshold: float = 0.5
+    vad_min_speech_duration_ms: int = 100
+    vad_min_silence_duration_ms: int = 80
+    vad_speech_pad_ms: int = 50
+    pre_margin_sec: float = 0.3
+    post_margin_sec: float = 0.5
+    min_speech_duration_sec: float = 0.2
+    merge_silence_gap_sec: float = 0.5
+    align_timestamps: bool = False
 
 
 class SilenceRequest(BaseModel):
@@ -200,7 +256,7 @@ class VadRequest(BaseModel):
     project_id: str
     audio_path: str
     silence_threshold_db: float | None = None
-    vad_threshold: float = 0.25
+    vad_threshold: float = 0.5
     min_speech_duration_sec: float = 0.2
     min_silence_duration_sec: float = 0.5
     speech_pad_sec: float = 0.05
@@ -237,7 +293,12 @@ class RenderRequest(BaseModel):
     project_id: str
     quality: str = "low"
     burn_subtitles: bool = False
+    subtitle_mode: str = "external"
+    subtitle_format: str = "srt"
     output_profile: str | None = None
+    destination_mode: str = "project"
+    output_directory: str | None = None
+    output_filename: str | None = None
 
 
 class DraftRenderRequest(BaseModel):
@@ -258,7 +319,81 @@ class ProjectSettingsRequest(BaseModel):
     default_subtitle_style_preset_id: str | None = None
     output_profile: str | None = None
     final_output_mode: str | None = None
+    audio_stream_index: int | None = None
     audio_timing: dict[str, Any] | None = None
+    transcription_mode: str | None = None
+    subtitle_click_playback_mode: str | None = None
+    ass_subtitle_defaults: dict[str, Any] | None = None
+
+
+class AppSettingsRequest(BaseModel):
+    startup_mode: str | None = None
+    last_project_id: str | None = None
+    default_output_directory: str | None = None
+    output_create_project_subdirectory: bool | None = None
+
+
+class DirectoryPickerRequest(BaseModel):
+    initial_directory: str | None = None
+
+
+class OpenExportDirectoryRequest(BaseModel):
+    project_id: str
+
+
+class ProjectWorkflowRequest(BaseModel):
+    project_id: str
+    workflow: dict[str, Any]
+
+
+class GeminiConfigRequest(BaseModel):
+    api_key: str | None = None
+    model: str | None = None
+    clear_key: bool = False
+    speaker_labels_enabled: bool | None = None
+    srt_timing_priority: bool | None = None
+
+
+class GeminiAnalyzeRequest(BaseModel):
+    project_id: str
+    model: str | None = None
+    instructions: str = ""
+    task: str = "subtitle"
+
+
+class GeminiTranscribeRequest(BaseModel):
+    project_id: str
+    model: str | None = None
+    language: str = "ja"
+
+
+class GeminiApplyRequest(BaseModel):
+    project_id: str
+    subtitle_edit_ids: list[str] = []
+    chapter_ids: list[str] = []
+    cut_ids: list[str] = []
+
+
+class GeminiKnowledgeResearchRequest(BaseModel):
+    project_id: str
+    work_title: str
+    model: str | None = None
+    instructions: str = ""
+
+
+class GeminiKnowledgeSaveRequest(BaseModel):
+    project_id: str
+    knowledge_base: dict[str, Any]
+
+
+class GeminiKnowledgeRegisterRequest(BaseModel):
+    project_id: str
+    database_name: str
+
+
+class GeminiKnowledgeLinkRequest(BaseModel):
+    project_id: str
+    database_id: str | None = None
 
 
 class ProjectRenameRequest(BaseModel):
@@ -317,6 +452,15 @@ def get_project(project_id: str):
         plan = load_project_edit_plan(project_id)
         data["edit_plan_path"] = "edit_plan.json"
         data["edit_plan"] = normalize_edit_plan_source_video(project_id, plan)
+    data["has_edit_plan"] = edit_plan.exists()
+    data["has_transcript"] = (base / "transcript" / "transcript.json").exists()
+    data["has_gemini_proposal"] = (base / "ai" / "gemini_proposal.json").exists()
+    data["has_decoration"] = (base / "decoration" / "decoration_project.json").exists()
+    preview_files = sorted((base / "preview").glob("*.mp4"), key=lambda path: path.stat().st_mtime, reverse=True) if (base / "preview").exists() else []
+    data["has_preview"] = bool(preview_files)
+    if preview_files:
+        data["preview_video_url"] = f"/api/projects/{project_id}/media/preview/{preview_files[0].name}"
+    data["has_output"] = any((base / "output").glob("final.*")) if (base / "output").exists() else False
     return data
 
 
@@ -357,11 +501,170 @@ def update_project_settings(req: ProjectSettingsRequest):
         ui_state["output_profile"] = req.output_profile
     if req.final_output_mode is not None:
         ui_state["final_output_mode"] = req.final_output_mode
+    if req.audio_stream_index is not None:
+        if req.audio_stream_index < 0:
+            raise HTTPException(status_code=400, detail="音声トラックの指定が不正です")
+        ui_state["audio_stream_index"] = req.audio_stream_index
     if req.audio_timing is not None:
         ui_state["audio_timing"] = req.audio_timing
+    if req.transcription_mode is not None:
+        if req.transcription_mode not in {"local", "gemini", "hybrid"}:
+            raise HTTPException(status_code=400, detail="字幕作成方式が不正です")
+        ui_state["transcription_mode"] = req.transcription_mode
+    if req.subtitle_click_playback_mode is not None:
+        if req.subtitle_click_playback_mode not in {"jump", "loop"}:
+            raise HTTPException(status_code=400, detail="字幕選択時の再生方法が不正です")
+        ui_state["subtitle_click_playback_mode"] = req.subtitle_click_playback_mode
+    if req.ass_subtitle_defaults is not None:
+        ui_state["ass_subtitle_defaults"] = normalize_ass_subtitle_style(req.ass_subtitle_defaults)
     updates["ui_state"] = ui_state
     updated = update_project_info(req.project_id, updates)
     return {"project": updated}
+
+
+@app.post("/api/projects/workflow")
+def update_project_workflow(req: ProjectWorkflowRequest):
+    allowed_steps = {
+        "STEP_PROJECT",
+        "STEP_TRANSCRIBE",
+        "STEP_AI_SUBTITLE",
+        "STEP_CUT",
+        "STEP_SUBTITLE_EDIT",
+        "STEP_DECORATION",
+        "STEP_PREVIEW",
+        "STEP_EXPORT",
+    }
+    allowed_statuses = {
+        "not_started",
+        "current",
+        "valid",
+        "invalidated",
+        "completed",
+        "blocked",
+        "error",
+    }
+    raw = req.workflow or {}
+    current_step_id = str(raw.get("currentStepId") or "STEP_PROJECT")
+    if current_step_id not in allowed_steps:
+        raise HTTPException(status_code=400, detail="不正な工程IDです")
+    raw_statuses = raw.get("stepStatus") or {}
+    if not isinstance(raw_statuses, dict):
+        raise HTTPException(status_code=400, detail="工程状態の形式が不正です")
+    step_status = {
+        step_id: str(status)
+        for step_id, status in raw_statuses.items()
+        if step_id in allowed_steps and str(status) in allowed_statuses
+    }
+    execution = raw.get("execution") if isinstance(raw.get("execution"), dict) else {}
+    workflow = {
+        "schemaVersion": "1.2.0",
+        "revision": max(0, int(raw.get("revision") or 0)),
+        "currentStepId": current_step_id,
+        "stepStatus": step_status,
+        "execution": {
+            "status": str(execution.get("status") or "idle")[:40],
+            "snapshot": execution.get("snapshot") if isinstance(execution.get("snapshot"), dict) else None,
+        },
+        "errors": list(raw.get("errors") or [])[-20:],
+    }
+    updated = update_project_info(req.project_id, {"workflow": workflow})
+    return {"workflow": updated.get("workflow") or workflow}
+
+
+@app.get("/api/settings/gemini")
+def get_gemini_settings():
+    return gemini_config_status()
+
+
+@app.get("/api/settings/app")
+def get_app_settings():
+    return load_app_settings()
+
+
+@app.post("/api/settings/app")
+def update_app_settings(req: AppSettingsRequest):
+    fields = getattr(req, "model_fields_set", getattr(req, "__fields_set__", set()))
+    return save_app_settings(
+        startup_mode=req.startup_mode,
+        last_project_id=req.last_project_id,
+        update_last_project="last_project_id" in fields,
+        default_output_directory=req.default_output_directory,
+        output_create_project_subdirectory=req.output_create_project_subdirectory,
+    )
+
+
+@app.get("/api/settings/gemini/models")
+def get_gemini_models(probe: bool = False):
+    return gemini_model_status(probe=probe)
+
+
+@app.post("/api/settings/gemini")
+def update_gemini_settings(req: GeminiConfigRequest):
+    return save_gemini_config(
+        req.api_key,
+        req.model,
+        req.clear_key,
+        req.speaker_labels_enabled,
+        req.srt_timing_priority,
+    )
+
+
+@app.get("/api/projects/{project_id}/ai/gemini")
+def get_project_gemini_proposal(project_id: str):
+    return {"proposal": load_gemini_proposal(project_id)}
+
+
+@app.get("/api/projects/{project_id}/ai/knowledge-base")
+def get_project_knowledge_base(project_id: str):
+    return {"knowledge_base": load_project_knowledge_base(project_id)}
+
+
+@app.get("/api/ai/knowledge-bases")
+def get_shared_knowledge_bases():
+    return {"databases": list_shared_knowledge_bases()}
+
+
+@app.post("/api/ai/gemini/research-knowledge")
+def api_gemini_research_knowledge(req: GeminiKnowledgeResearchRequest):
+    return {"knowledge_base": research_project_knowledge(req.project_id, req.work_title, req.model, req.instructions)}
+
+
+@app.post("/api/projects/ai/knowledge-base")
+def update_project_knowledge_base(req: GeminiKnowledgeSaveRequest):
+    return {"knowledge_base": save_project_knowledge_base(req.project_id, req.knowledge_base)}
+
+
+@app.post("/api/ai/knowledge-bases/register")
+def register_shared_knowledge_base(req: GeminiKnowledgeRegisterRequest):
+    return {"knowledge_base": register_project_knowledge_as_shared(req.project_id, req.database_name)}
+
+
+@app.post("/api/projects/ai/knowledge-base/link")
+def update_project_knowledge_base_link(req: GeminiKnowledgeLinkRequest):
+    return {"knowledge_base": link_project_knowledge_base(req.project_id, req.database_id)}
+
+
+@app.post("/api/ai/gemini/analyze")
+def api_gemini_analyze(req: GeminiAnalyzeRequest):
+    return analyze_project_with_gemini(req.project_id, req.model, req.instructions, req.task)
+
+
+@app.post("/api/ai/gemini/transcribe")
+def api_gemini_transcribe(req: GeminiTranscribeRequest):
+    return transcribe_project_with_gemini(req.project_id, req.model, req.language)
+
+
+@app.post("/api/ai/gemini/apply")
+def api_gemini_apply(req: GeminiApplyRequest):
+    result = apply_gemini_proposal(req.project_id, req.subtitle_edit_ids, req.chapter_ids, req.cut_ids)
+    plan = result.get("edit_plan") or {}
+    base = require_project(req.project_id)
+    write_srt(plan.get("subtitles") or [], base / "subtitles" / "edited.srt")
+    plan["scenes"] = build_scene_catalog_from_subtitles(plan.get("subtitles") or [], plan.get("scenes") or [])
+    atomic_write_json(base / "edit_plan.json", plan, backup=True)
+    update_project_info(req.project_id, {"scenes": plan.get("scenes") or []})
+    result["edit_plan"] = plan
+    return result
 
 
 @app.post("/api/projects/scenes")
@@ -389,6 +692,25 @@ def api_version():
     return version_info()
 
 
+@app.post("/api/system/select-output-directory")
+def api_select_output_directory(req: DirectoryPickerRequest, request: Request):
+    origin = str(request.headers.get("origin") or "")
+    if origin and not origin.startswith(("http://127.0.0.1:", "http://localhost:")):
+        raise HTTPException(status_code=403, detail="ローカル画面から操作してください")
+    selected = choose_output_directory(req.initial_directory)
+    return {"directory": selected}
+
+
+@app.post("/api/system/open-export-directory")
+def api_open_export_directory(req: OpenExportDirectoryRequest, request: Request):
+    origin = str(request.headers.get("origin") or "")
+    if origin and not origin.startswith(("http://127.0.0.1:", "http://localhost:")):
+        raise HTTPException(status_code=403, detail="ローカル画面から操作してください")
+    directory = configured_export_directory(req.project_id, load_app_settings())
+    open_directory_in_file_manager(directory)
+    return {"directory": str(directory)}
+
+
 @app.post("/api/browser/heartbeat")
 def api_browser_heartbeat():
     global _browser_heartbeat_at, _browser_heartbeat_enabled, _browser_close_requested_at
@@ -412,7 +734,9 @@ def api_presets():
 
 
 @app.get("/api/system/fonts")
-def api_system_fonts():
+def api_system_fonts(refresh: bool = False):
+    if refresh:
+        list_system_fonts.cache_clear()
     return {"fonts": list_system_fonts()}
 
 
@@ -477,19 +801,65 @@ def api_probe(req: ProbeRequest):
 
 @app.post("/api/audio/extract")
 def api_extract_audio(req: ExtractAudioRequest):
-    return extract_audio(req.project_id, req.video_path, req.start_sec, req.end_sec, req.compute_profile)
+    return extract_audio(
+        req.project_id,
+        req.video_path,
+        req.start_sec,
+        req.end_sec,
+        req.compute_profile,
+        req.audio_stream_index,
+    )
+
+
+@app.post("/api/audio/preview-track")
+def api_prepare_audio_track_preview(req: AudioTrackPreviewRequest):
+    return prepare_audio_track_preview(req.project_id, req.audio_stream_index)
 
 
 @app.post("/api/transcribe")
 def api_transcribe(req: TranscribeRequest):
-    return transcribe_audio(
+    try:
+        return transcribe_audio(
+            req.project_id,
+            req.audio_path,
+            req.language,
+            req.model,
+            req.compute_profile,
+            req.engine,
+            req.silence_threshold_db,
+            detection_mode=req.detection_mode,
+            voice_isolation_enabled=req.voice_isolation_enabled,
+            use_isolated_voice_for_vad=req.use_isolated_voice_for_vad,
+            use_isolated_voice_for_whisper=req.use_isolated_voice_for_whisper,
+            vad_threshold=req.vad_threshold,
+            vad_min_speech_duration_ms=req.vad_min_speech_duration_ms,
+            vad_min_silence_duration_ms=req.vad_min_silence_duration_ms,
+            vad_speech_pad_ms=req.vad_speech_pad_ms,
+            pre_margin_sec=req.pre_margin_sec,
+            post_margin_sec=req.post_margin_sec,
+            min_speech_duration_sec=req.min_speech_duration_sec,
+            merge_silence_gap_sec=req.merge_silence_gap_sec,
+            align_timestamps=req.align_timestamps,
+            use_whisperx_alignment=req.use_whisperx_alignment,
+        )
+    except Exception as exc:
+        finish_transcription_progress(req.project_id, success=False, error=str(exc))
+        raise
+
+
+@app.post("/api/transcribe/range")
+def api_transcribe_range(req: RangeTranscribeRequest):
+    return transcribe_audio_range(
         req.project_id,
-        req.audio_path,
-        req.language,
-        req.model,
-        req.compute_profile,
-        req.engine,
-        req.silence_threshold_db,
+        req.start_sec,
+        req.end_sec,
+        req.subtitles,
+        language=req.language,
+        model=req.model,
+        compute_profile=req.compute_profile,
+        engine=req.engine,
+        replacement_mode=req.replacement_mode,
+        analysis_padding_sec=req.analysis_padding_sec,
         detection_mode=req.detection_mode,
         voice_isolation_enabled=req.voice_isolation_enabled,
         use_isolated_voice_for_vad=req.use_isolated_voice_for_vad,
@@ -503,7 +873,6 @@ def api_transcribe(req: TranscribeRequest):
         min_speech_duration_sec=req.min_speech_duration_sec,
         merge_silence_gap_sec=req.merge_silence_gap_sec,
         align_timestamps=req.align_timestamps,
-        use_whisperx_alignment=req.use_whisperx_alignment,
     )
 
 
@@ -609,7 +978,42 @@ def api_preview_manual_cuts(req: DraftRenderRequest):
 
 @app.post("/api/export/final")
 def api_export(req: RenderRequest):
-    return render_from_plan(req.project_id, preview=False, burn_subtitles=req.burn_subtitles, output_profile=req.output_profile)
+    result = render_from_plan(
+        req.project_id,
+        preview=False,
+        burn_subtitles=req.burn_subtitles,
+        subtitle_mode=req.subtitle_mode,
+        subtitle_format=req.subtitle_format,
+        output_profile=req.output_profile,
+    )
+    if req.destination_mode == "project":
+        return result
+    if req.destination_mode == "custom":
+        if not str(req.output_directory or "").strip():
+            raise HTTPException(status_code=400, detail="出力先フォルダを指定してください")
+        if not str(req.output_filename or "").strip():
+            raise HTTPException(status_code=400, detail="出力ファイル名を指定してください")
+        return publish_export_result(
+            req.project_id,
+            result,
+            req.output_directory or "",
+            req.output_filename,
+            create_project_subdirectory=False,
+        )
+    if req.destination_mode == "configured":
+        info = project_info(req.project_id)
+        app_settings = load_app_settings()
+        configured_directory = str(app_settings.get("default_output_directory") or "").strip()
+        if not configured_directory:
+            return result
+        return publish_export_result(
+            req.project_id,
+            result,
+            configured_directory,
+            str(info.get("project_name") or req.project_id),
+            create_project_subdirectory=bool(app_settings.get("output_create_project_subdirectory", True)),
+        )
+    raise HTTPException(status_code=400, detail="出力先の指定方法が不正です")
 
 
 if FRONTEND_DIR.exists():

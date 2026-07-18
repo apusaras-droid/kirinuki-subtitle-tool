@@ -22,8 +22,8 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile
 
 from .audit import audit_event, audit_project_detail_event, audit_project_event
-from .edit_plan import build_edit_plan
-from .srt import apply_vad_subtitle_corrections, normalize_subtitle_durations, parse_srt, subtitles_from_whisper, write_srt
+from .edit_plan import build_edit_plan, map_subtitles_to_output
+from .srt import apply_vad_subtitle_corrections, filter_repetitive_hallucinations, normalize_subtitle_durations, parse_srt, subtitles_from_whisper, write_srt
 from .timecode import format_srt_time
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,7 +32,7 @@ FRONTEND_DIR = ROOT / "frontend"
 WHISPER_CPP_DIR = ROOT / "tools" / "whisper.cpp"
 WHISPER_CPP_EXE = WHISPER_CPP_DIR / "bin" / "whisper-cli.exe"
 WHISPER_CPP_MODELS = WHISPER_CPP_DIR / "models"
-WHISPER_CPP_VAD_MODEL = WHISPER_CPP_MODELS / "ggml-silero-v5.1.2.bin"
+WHISPER_CPP_VAD_MODEL = WHISPER_CPP_MODELS / "ggml-silero-v6.2.0.bin"
 DOCS_DIR = ROOT / "docs"
 EMOTION_PRESETS_SAMPLE = DOCS_DIR / "emotion_presets.sample.json"
 SUBTITLE_STYLE_PRESETS_SAMPLE = DOCS_DIR / "subtitle_style_presets.sample.json"
@@ -40,40 +40,89 @@ SCENES_SAMPLE = DOCS_DIR / "scenes.sample.json"
 DECORATION_PRESETS_SAMPLE = DOCS_DIR / "decoration_presets.sample.json"
 APP_DATA_DIR = ROOT / "data"
 DECORATION_PRESETS_SHARED = APP_DATA_DIR / "shared" / "decoration_presets.json"
+TRANSCRIPTION_RUNTIME_HISTORY = APP_DATA_DIR / "shared" / "transcription_runtime_history.json"
 DECORATION_PRESETS_SHARED_LEGACY = PROJECTS_DIR / "_shared" / "decoration_presets.json"
 WAVEFORM_MAX_POINTS = 1800
 MAX_HISTORY_VERSIONS = 12
 
+DEFAULT_ASS_SUBTITLE_STYLE = {
+    "preset_id": "ass_standard",
+    "font_name": "Noto Sans JP",
+    "font_size": 44,
+    "primary_color": "#FFFFFF",
+    "outline_color": "#000000",
+    "outline_width": 3.0,
+    "shadow_depth": 1.0,
+    "bold": True,
+    "italic": False,
+    "alignment": 2,
+    "margin_l": 60,
+    "margin_r": 60,
+    "margin_v": 48,
+    "spacing": 0.0,
+}
+
+
+def normalize_ass_subtitle_style(value: dict | None, *, include_enabled: bool = False) -> dict:
+    raw = value if isinstance(value, dict) else {}
+
+    def number(key: str, fallback: float, low: float, high: float) -> float:
+        try:
+            return max(low, min(high, float(raw.get(key, fallback))))
+        except (TypeError, ValueError):
+            return fallback
+
+    def color(key: str, fallback: str) -> str:
+        candidate = str(raw.get(key, fallback) or fallback).strip().upper()
+        return candidate if re.fullmatch(r"#[0-9A-F]{6}", candidate) else fallback
+
+    font_name = clean_font_family_name(str(raw.get("font_name") or DEFAULT_ASS_SUBTITLE_STYLE["font_name"]))[:120]
+    result = {
+        "preset_id": str(raw.get("preset_id") or "ass_custom")[:80],
+        "font_name": font_name or DEFAULT_ASS_SUBTITLE_STYLE["font_name"],
+        "font_size": int(round(number("font_size", 44, 8, 160))),
+        "primary_color": color("primary_color", "#FFFFFF"),
+        "outline_color": color("outline_color", "#000000"),
+        "outline_width": round(number("outline_width", 3.0, 0, 20), 2),
+        "shadow_depth": round(number("shadow_depth", 1.0, 0, 20), 2),
+        "bold": bool(raw.get("bold", True)),
+        "italic": bool(raw.get("italic", False)),
+        "alignment": int(round(number("alignment", 2, 1, 9))),
+        "margin_l": int(round(number("margin_l", 60, 0, 1000))),
+        "margin_r": int(round(number("margin_r", 60, 0, 1000))),
+        "margin_v": int(round(number("margin_v", 48, 0, 1000))),
+        "spacing": round(number("spacing", 0.0, -10, 40), 2),
+    }
+    if include_enabled:
+        result["enabled"] = bool(raw.get("enabled", False))
+    return result
+
 
 @lru_cache(maxsize=1)
 def list_system_fonts() -> list[str]:
-    names: set[str] = {"Arial", "Meiryo", "Yu Gothic", "Yu Mincho"}
-    registry_count = 0
-    if os.name == "nt":
-        try:
-            import winreg
-
-            key_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
-                for index in range(winreg.QueryInfoKey(key)[1]):
-                    value_name, _, _ = winreg.EnumValue(key, index)
-                    cleaned = clean_font_family_name(str(value_name))
-                    if cleaned:
-                        for candidate in font_family_candidates(cleaned):
-                            names.add(candidate)
-                        registry_count += 1
-        except Exception:
-            pass
-    font_dirs = [Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"] if os.name == "nt" else [Path("/usr/share/fonts"), Path.home() / ".fonts"]
+    names: set[str] = set()
+    font_dirs = (
+        [
+            Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
+            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Microsoft" / "Windows" / "Fonts",
+        ]
+        if os.name == "nt"
+        else [Path("/usr/share/fonts"), Path.home() / ".fonts"]
+    )
     for font_dir in font_dirs:
         if not font_dir.exists():
             continue
         for path in font_dir.rglob("*"):
-            if path.suffix.lower() in {".ttf", ".otf", ".ttc"}:
+            if path.suffix.lower() not in {".ttf", ".otf", ".ttc"} or not font_file_has_japanese_glyphs(path):
+                continue
+            internal_names = japanese_font_family_names_from_file(path)
+            if internal_names:
+                names.update(internal_names)
+            else:
                 names.add(path.stem.replace("_", " ").strip())
-                if font_file_has_japanese_glyphs(path):
-                    for candidate in japanese_font_family_names_from_file(path):
-                        names.add(candidate)
+    for fallback in ["Noto Sans JP", "Noto Serif JP", "Meiryo", "Yu Gothic", "Yu Mincho", "BIZ UDPGothic", "BIZ UDMincho"]:
+        if find_font_file(fallback):
+            names.add(fallback)
     return sorted(names, key=lambda item: item.lower())
 
 
@@ -298,8 +347,222 @@ def latest_ffmpeg_progress_from_log(log_path: Path) -> dict:
     }
 
 
+def _audio_duration_sec(audio_path: Path) -> float:
+    try:
+        with wave.open(str(audio_path), "rb") as wav_file:
+            return wav_file.getnframes() / max(1, wav_file.getframerate())
+    except Exception:
+        return 0.0
+
+
+def _transcription_history_key(
+    engine: str,
+    model: str,
+    compute_profile: str,
+    voice_isolation_enabled: bool,
+    use_whisperx_alignment: bool,
+) -> str:
+    return ":".join(
+        [
+            str(engine or "unknown").lower(),
+            str(model or "unknown").lower(),
+            str(compute_profile or "auto").lower(),
+            "voice" if voice_isolation_enabled else "original",
+            "whisperx" if use_whisperx_alignment else "standard",
+        ]
+    )
+
+
+def estimate_transcription_duration(
+    duration_sec: float,
+    engine: str,
+    model: str,
+    compute_profile: str,
+    voice_isolation_enabled: bool,
+    use_whisperx_alignment: bool,
+) -> tuple[float, str, str]:
+    duration_sec = max(1.0, float(duration_sec or 0.0))
+    history_key = _transcription_history_key(engine, model, compute_profile, voice_isolation_enabled, use_whisperx_alignment)
+    try:
+        history = read_json_repairing_extra_data(TRANSCRIPTION_RUNTIME_HISTORY) if TRANSCRIPTION_RUNTIME_HISTORY.exists() else {}
+    except Exception:
+        history = {}
+    samples = history.get(history_key, []) if isinstance(history, dict) else []
+    rtfs = sorted(float(item.get("rtf", 0.0) or 0.0) for item in samples if float(item.get("rtf", 0.0) or 0.0) > 0)
+    if rtfs:
+        median_rtf = rtfs[len(rtfs) // 2]
+        return max(15.0, duration_sec * median_rtf), "history", history_key
+
+    model_name = str(model or "small").lower()
+    model_group = "large" if "large" in model_name else model_name
+    profile = str(compute_profile or "auto").lower()
+    if profile == "cpu":
+        rtf_table = {"base": 0.45, "small": 0.85, "medium": 1.55, "large": 2.5}
+    else:
+        rtf_table = {"base": 0.08, "small": 0.16, "medium": 0.32, "large": 0.58}
+    rtf = rtf_table.get(model_group, 0.4)
+    if not str(engine or "").startswith("whisper.cpp"):
+        rtf *= 1.35
+    if voice_isolation_enabled:
+        rtf += 0.55
+    if use_whisperx_alignment:
+        rtf += 0.8
+    return max(30.0, duration_sec * rtf + 20.0), "profile", history_key
+
+
+def begin_transcription_progress(
+    project_id: str,
+    audio_path: Path,
+    engine: str,
+    model: str,
+    compute_profile: str,
+    voice_isolation_enabled: bool,
+    use_whisperx_alignment: bool,
+) -> None:
+    base = require_project(project_id)
+    duration_sec = _audio_duration_sec(audio_path)
+    estimated_total_sec, estimate_source, history_key = estimate_transcription_duration(
+        duration_sec, engine, model, compute_profile, voice_isolation_enabled, use_whisperx_alignment
+    )
+    now = time.time()
+    atomic_write_json(
+        base / "temp" / "transcription_progress.json",
+        {
+            "status": "running",
+            "stage": "文字起こし準備",
+            "stage_id": "transcription_prepare",
+            "started_at_epoch": now,
+            "stage_started_at_epoch": now,
+            "audio_duration_sec": duration_sec,
+            "estimated_total_sec": estimated_total_sec,
+            "estimate_source": estimate_source,
+            "history_key": history_key,
+            "engine": engine,
+            "model": model,
+            "compute_profile": compute_profile,
+            "percent_start": 0.0,
+            "percent_end": 3.0,
+            "stage_estimate_sec": max(2.0, estimated_total_sec * 0.03),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def update_transcription_progress(
+    project_id: str,
+    stage: str,
+    stage_id: str,
+    percent_start: float,
+    percent_end: float,
+    estimated_fraction: float,
+) -> None:
+    base = require_project(project_id)
+    path = base / "temp" / "transcription_progress.json"
+    try:
+        progress = read_json_repairing_extra_data(path) if path.exists() else {}
+    except Exception:
+        progress = {}
+    if not isinstance(progress, dict) or progress.get("status") != "running":
+        return
+    estimated_total_sec = max(1.0, float(progress.get("estimated_total_sec", 1.0) or 1.0))
+    progress.update(
+        {
+            "stage": stage,
+            "stage_id": stage_id,
+            "stage_started_at_epoch": time.time(),
+            "percent_start": float(percent_start),
+            "percent_end": float(percent_end),
+            "stage_estimate_sec": max(1.0, estimated_total_sec * max(0.01, float(estimated_fraction))),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    atomic_write_json(path, progress)
+
+
+def finish_transcription_progress(project_id: str, *, success: bool, error: str | None = None) -> None:
+    base = require_project(project_id)
+    path = base / "temp" / "transcription_progress.json"
+    try:
+        progress = read_json_repairing_extra_data(path) if path.exists() else {}
+    except Exception:
+        progress = {}
+    if not isinstance(progress, dict) or not progress or progress.get("status") != "running":
+        return
+    elapsed_sec = max(0.0, time.time() - float(progress.get("started_at_epoch", time.time()) or time.time()))
+    progress.update(
+        {
+            "status": "completed" if success else "failed",
+            "stage": "字幕作成完了" if success else "字幕作成失敗",
+            "stage_id": "transcription_complete" if success else "transcription_failed",
+            "elapsed_sec": elapsed_sec,
+            "percent_start": 100.0 if success else float(progress.get("percent_start", 0.0) or 0.0),
+            "percent_end": 100.0 if success else float(progress.get("percent_end", 0.0) or 0.0),
+            "error": str(error or "")[:1000] if not success else None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    atomic_write_json(path, progress)
+    duration_sec = float(progress.get("audio_duration_sec", 0.0) or 0.0)
+    history_key = str(progress.get("history_key") or "")
+    if success and duration_sec > 0 and elapsed_sec > 0 and history_key:
+        TRANSCRIPTION_RUNTIME_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            history = read_json_repairing_extra_data(TRANSCRIPTION_RUNTIME_HISTORY) if TRANSCRIPTION_RUNTIME_HISTORY.exists() else {}
+        except Exception:
+            history = {}
+        if not isinstance(history, dict):
+            history = {}
+        samples = list(history.get(history_key) or [])
+        samples.append(
+            {
+                "rtf": elapsed_sec / duration_sec,
+                "elapsed_sec": elapsed_sec,
+                "audio_duration_sec": duration_sec,
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        history[history_key] = samples[-8:]
+        atomic_write_json(TRANSCRIPTION_RUNTIME_HISTORY, history)
+
+
 def project_processing_progress(project_id: str) -> dict:
     base = require_project(project_id)
+    transcription_progress_path = base / "temp" / "transcription_progress.json"
+    if transcription_progress_path.exists():
+        try:
+            transcription_progress = read_json_repairing_extra_data(transcription_progress_path)
+        except Exception:
+            transcription_progress = {}
+        if isinstance(transcription_progress, dict) and transcription_progress.get("status") == "running":
+            now = time.time()
+            started_at = float(transcription_progress.get("started_at_epoch", now) or now)
+            stage_started_at = float(transcription_progress.get("stage_started_at_epoch", started_at) or started_at)
+            elapsed_sec = max(0.0, now - started_at)
+            stage_elapsed_sec = max(0.0, now - stage_started_at)
+            estimated_total_sec = max(1.0, float(transcription_progress.get("estimated_total_sec", 1.0) or 1.0))
+            stage_estimate_sec = max(1.0, float(transcription_progress.get("stage_estimate_sec", 1.0) or 1.0))
+            percent_start = max(0.0, min(99.0, float(transcription_progress.get("percent_start", 0.0) or 0.0)))
+            percent_end = max(percent_start, min(99.5, float(transcription_progress.get("percent_end", percent_start) or percent_start)))
+            stage_fraction = min(0.97, stage_elapsed_sec / stage_estimate_sec)
+            percent = percent_start + (percent_end - percent_start) * stage_fraction
+            future_sec = estimated_total_sec * max(0.0, 1.0 - percent_end / 100.0)
+            stage_remaining_sec = (
+                stage_estimate_sec - stage_elapsed_sec
+                if stage_elapsed_sec <= stage_estimate_sec
+                else max(30.0, stage_elapsed_sec * 0.15)
+            )
+            stale_limit_sec = max(3600.0, estimated_total_sec * 4.0)
+            active = elapsed_sec < stale_limit_sec
+            return {
+                **transcription_progress,
+                "active": active,
+                "elapsed_sec": elapsed_sec,
+                "stage_elapsed_sec": stage_elapsed_sec,
+                "percent": percent,
+                "remaining_sec": max(1.0, stage_remaining_sec + future_sec) if active else None,
+                "speed": 0.0,
+                "estimate": True,
+            }
     logs_dir = base / "temp" / "logs"
     output_video = base / "output" / "final.mp4"
     candidates = [
@@ -1624,6 +1887,7 @@ def find_font_file(family: str | None) -> Path | None:
     candidates: list[Path] = []
     if os.name == "nt":
         font_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        user_font_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Microsoft" / "Windows" / "Fonts"
         try:
             import winreg
 
@@ -1633,7 +1897,16 @@ def find_font_file(family: str | None) -> Path | None:
                     value_name, font_file, _ = winreg.EnumValue(key, index)
                     cleaned = clean_font_family_name(str(value_name))
                     registry_names = [re.sub(r"[_\-\s]+", " ", item).lower() for item in font_family_candidates(cleaned)]
-                    if any(name == reg_name or name in reg_name or reg_name in name for name in names for reg_name in registry_names):
+                    if any(
+                        name == reg_name
+                        or (
+                            len(name) >= 6
+                            and len(reg_name) >= 6
+                            and (name in reg_name or reg_name in name)
+                        )
+                        for name in names
+                        for reg_name in registry_names
+                    ):
                         path = Path(str(font_file))
                         if not path.is_absolute():
                             path = font_dir / path
@@ -1643,6 +1916,8 @@ def find_font_file(family: str | None) -> Path | None:
             pass
         if font_dir.exists():
             candidates.extend([path for path in font_dir.rglob("*") if path.suffix.lower() in {".ttf", ".otf", ".ttc"}])
+        if user_font_dir.exists():
+            candidates.extend([path for path in user_font_dir.rglob("*") if path.suffix.lower() in {".ttf", ".otf", ".ttc"}])
     else:
         for font_dir in [Path("/usr/share/fonts"), Path.home() / ".fonts"]:
             if font_dir.exists():
@@ -1657,16 +1932,26 @@ def find_font_file(family: str | None) -> Path | None:
     ]
     if partial:
         return sorted(partial, key=lambda item: len(item.name))[0]
-    by_internal_name: list[Path] = []
+    by_internal_exact: list[Path] = []
+    by_internal_partial: list[Path] = []
     for path in candidates:
         internal_names = [
             re.sub(r"[_\-\s]+", " ", candidate).lower()
             for candidate in japanese_font_family_names_from_file(path)
         ]
-        if any(name == internal or name in internal or internal in name for name in names for internal in internal_names):
-            by_internal_name.append(path)
-    if by_internal_name:
-        return sorted(by_internal_name, key=lambda item: len(item.name))[0]
+        if any(name == internal for name in names for internal in internal_names):
+            by_internal_exact.append(path)
+        elif any(
+            len(name) >= 6 and len(internal) >= 6 and (name in internal or internal in name)
+            for name in names
+            for internal in internal_names
+        ):
+            by_internal_partial.append(path)
+    font_rank = lambda item: (0 if "regular" in item.stem.lower() else 1, len(item.name))
+    if by_internal_exact:
+        return sorted(by_internal_exact, key=font_rank)[0]
+    if by_internal_partial:
+        return sorted(by_internal_partial, key=font_rank)[0]
     return None
 
 
@@ -2376,7 +2661,18 @@ def generate_decoration_overlays(project_id: str, decoration: dict, canvas_size:
     layout_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("layout_presets", []), decoration.get("layout_presets"))}
     frame_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("frame_presets", []), decoration.get("frame_presets"))}
     emotion_presets = load_emotion_presets()
-    default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
+    project_ui_state = project_info(project_id).get("ui_state") or {}
+    project_ass_style = normalize_ass_subtitle_style(project_ui_state.get("ass_subtitle_defaults"))
+    preset_default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
+    default_font = {
+        **preset_default_font,
+        "family": project_ass_style["font_name"],
+        "size": project_ass_style["font_size"],
+        "color": project_ass_style["primary_color"],
+        "outline_color": project_ass_style["outline_color"],
+        "outline_width": project_ass_style["outline_width"],
+        "shadow_depth": project_ass_style["shadow_depth"],
+    }
     default_layout = next(iter(layout_presets.values()), {"anchor": "bottom_center"})
     overlay_dir = base / "temp" / "decoration_overlays"
     overlay_dir.mkdir(parents=True, exist_ok=True)
@@ -2396,9 +2692,13 @@ def generate_decoration_overlays(project_id: str, decoration: dict, canvas_size:
             frame_presets.get(item.get("frame_preset_id")) or frame_presets.get("frame_none") or {},
         )
         layout = layout_presets.get(item.get("layout_preset_id")) or default_layout
+        item_ass_override = normalize_ass_subtitle_style(item.get("ass_style"), include_enabled=True)
+        item_ass_style = dict(project_ass_style)
+        if item_ass_override.get("enabled"):
+            item_ass_style.update({key: value for key, value in item_ass_override.items() if key != "enabled"})
         font_for_geometry = dict(font)
-        font_for_geometry["family"] = str(item.get("font_family") or font.get("family", "Yu Gothic"))
-        font_for_geometry["size"] = int(float(item.get("font_size", font.get("size", 44)) or 44))
+        font_for_geometry["family"] = str(item.get("font_family") or item_ass_style["font_name"] or font.get("family", "Yu Gothic"))
+        font_for_geometry["size"] = int(float(item.get("font_size") or item_ass_style["font_size"] or font.get("size", 44)))
         start = timeline_start_sec(item)
         end = timeline_end_sec(item, start + 1.0)
         overlay_path = overlay_dir / f"frame_{index:04d}.png"
@@ -2574,6 +2874,110 @@ def resolve_emotion_preset(emotion: str | None, presets: list[dict] | None = Non
     }
 
 
+def ass_alignment_position(alignment: int, margins: tuple[int, int, int], canvas_size: tuple[int, int]) -> tuple[float, float]:
+    alignment = max(1, min(9, int(alignment or 2)))
+    margin_l, margin_r, margin_v = margins
+    width, height = canvas_size
+    column = (alignment - 1) % 3
+    row = (alignment - 1) // 3
+    x = float(margin_l) if column == 0 else float(width) / 2.0 if column == 1 else float(width - margin_r)
+    y = float(height - margin_v) if row == 0 else float(height) / 2.0 if row == 1 else float(margin_v)
+    return x, y
+
+
+def build_plain_ass(
+    project_id: str,
+    subtitles: list[dict],
+    output_path: Path,
+    *,
+    canvas_size: tuple[int, int] = (1280, 720),
+) -> Path:
+    """Build an ASS subtitle file without decoration-page effects or frames."""
+    require_project(project_id)
+    project_ui_state = project_info(project_id).get("ui_state") or {}
+    default_style = normalize_ass_subtitle_style(project_ui_state.get("ass_subtitle_defaults"))
+    scale = decoration_scale_for_canvas(canvas_size)
+    style_name = "Default"
+    ass_lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        f"PlayResX: {int(canvas_size[0])}",
+        f"PlayResY: {int(canvas_size[1])}",
+        "WrapStyle: 2",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+        "Style: "
+        + ",".join(
+            [
+                style_name,
+                clean_font_family_name(default_style["font_name"]),
+                str(int(round(default_style["font_size"] * scale))),
+                ass_color(default_style["primary_color"]),
+                ass_color(default_style["primary_color"]),
+                ass_color(default_style["outline_color"]),
+                ass_color("#000000"),
+                "-1" if default_style["bold"] else "0",
+                "-1" if default_style["italic"] else "0",
+                "0",
+                "0",
+                "100",
+                "100",
+                str(default_style["spacing"]),
+                "0",
+                "1",
+                str(round(default_style["outline_width"] * scale, 2)),
+                str(round(default_style["shadow_depth"] * scale, 2)),
+                str(default_style["alignment"]),
+                str(default_style["margin_l"]),
+                str(default_style["margin_r"]),
+                str(default_style["margin_v"]),
+                "1",
+            ]
+        ),
+        "",
+        "[Events]",
+        "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+    ]
+    ass_lines.extend(ass_comment_line(line, style=style_name) for line in default_ai_ass_prompt_lines())
+    for item in subtitles or []:
+        if item.get("enabled", True) is False or not str(item.get("text") or "").strip():
+            continue
+        start = timeline_start_sec(item)
+        end = max(start + 0.01, timeline_end_sec(item, start))
+        override = normalize_ass_subtitle_style(item.get("ass_style"), include_enabled=True)
+        style = dict(default_style)
+        if override.get("enabled"):
+            style.update({key: value for key, value in override.items() if key != "enabled"})
+        alignment = int(style["alignment"])
+        x, y = ass_alignment_position(
+            alignment,
+            (style["margin_l"], style["margin_r"], style["margin_v"]),
+            canvas_size,
+        )
+        tags = [
+            f"\\an{alignment}",
+            f"\\pos({x:.1f},{y:.1f})",
+            f"\\fn{sanitize_ass_text(style['font_name'])}",
+            f"\\fs{int(round(style['font_size'] * scale))}",
+            f"\\1c{ass_color(style['primary_color'])}",
+            f"\\3c{ass_color(style['outline_color'])}",
+            f"\\bord{round(style['outline_width'] * scale, 2)}",
+            f"\\shad{round(style['shadow_depth'] * scale, 2)}",
+            "\\b1" if style["bold"] else "\\b0",
+            "\\i1" if style["italic"] else "\\i0",
+            f"\\fsp{style['spacing']}",
+        ]
+        ass_lines.append(
+            f"Dialogue: 0,{ass_timecode(start)},{ass_timecode(end)},{style_name},,"
+            f"{style['margin_l']},{style['margin_r']},{style['margin_v']},,"
+            f"{{{''.join(tags)}}}{sanitize_ass_text(item.get('text', ''))}"
+        )
+    atomic_write_text(output_path, "\n".join(ass_lines) + "\n", encoding="utf-8")
+    return output_path
+
+
 def build_decoration_ass(
     project_id: str,
     decoration: dict,
@@ -2614,7 +3018,18 @@ def build_decoration_ass(
     layout_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("layout_presets", []), decoration.get("layout_presets"))}
     frame_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("frame_presets", []), decoration.get("frame_presets"))}
     emotion_presets = load_emotion_presets()
-    default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
+    project_ui_state = project_info(project_id).get("ui_state") or {}
+    project_ass_style = normalize_ass_subtitle_style(project_ui_state.get("ass_subtitle_defaults"))
+    preset_default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
+    default_font = {
+        **preset_default_font,
+        "family": project_ass_style["font_name"],
+        "size": project_ass_style["font_size"],
+        "color": project_ass_style["primary_color"],
+        "outline_color": project_ass_style["outline_color"],
+        "outline_width": project_ass_style["outline_width"],
+        "shadow_depth": project_ass_style["shadow_depth"],
+    }
     play_res_x, play_res_y = canvas_size
     scale = decoration_scale_for_canvas(canvas_size)
     ass_lines = [
@@ -2640,21 +3055,21 @@ def build_decoration_ass(
                 ass_color(default_font.get("color", "#ffffff")),
                 ass_color(default_font.get("outline_color", "#000000")),
                 ass_color("#000000"),
-                "0",
-                "0",
+                "-1" if project_ass_style["bold"] else "0",
+                "-1" if project_ass_style["italic"] else "0",
                 "0",
                 "0",
                 "100",
                 "100",
-                "0",
+                str(project_ass_style["spacing"]),
                 "0",
                 "1",
                 str(max(0, int(round(float(default_font.get("outline_width", 4) or 4) * scale)))),
                 str(max(0, int(round(float(default_font.get("shadow_depth", 4) or 4) * scale)))),
-                "2",
-                "60",
-                "60",
-                "60",
+                str(project_ass_style["alignment"]),
+                str(project_ass_style["margin_l"]),
+                str(project_ass_style["margin_r"]),
+                str(project_ass_style["margin_v"]),
                 "1",
             ]
         )
@@ -2689,24 +3104,39 @@ def build_decoration_ass(
         )
         layout = layout_presets.get(item.get("layout_preset_id")) or default_layout
         if include_caption_text:
-            font_family = clean_font_family_name(str(item.get("font_family") or font.get("family", "Yu Gothic")))
-            font_size = int(round(float(item.get("font_size", font.get("size", 44)) or 44) * scale))
+            item_ass_override = normalize_ass_subtitle_style(item.get("ass_style"), include_enabled=True)
+            item_ass_style = dict(project_ass_style)
+            if item_ass_override.get("enabled"):
+                item_ass_style.update({key: value for key, value in item_ass_override.items() if key != "enabled"})
+            font_family = clean_font_family_name(str(item.get("font_family") or item_ass_style["font_name"] or font.get("family", "Yu Gothic")))
+            font_size = int(round(float(item.get("font_size") or item_ass_style["font_size"] or font.get("size", 44)) * scale))
             outline_enabled = item.get("font_outline_enabled", True)
-            outline = max(0, int(round(float(item.get("font_outline_width", font.get("outline_width", 4)) or 4) * scale)))
+            outline_source = item.get("font_outline_width") if item.get("font_outline_width") is not None else item_ass_style["outline_width"]
+            outline = max(0, int(round(float(outline_source) * scale)))
             if outline_enabled is False:
                 outline = 0
-            shadow = max(0, int(round(float(font.get("shadow_depth", 4) or 4) * scale)))
+            shadow = max(0, int(round(float(item_ass_style["shadow_depth"]) * scale)))
             rotation = subtitle_rotation_deg(item)
-            primary = ass_color(item.get("font_color", font.get("color", "#ffffff")))
-            outline_color = ass_color(item.get("font_outline_color", font.get("outline_color", "#000000")))
+            primary = ass_color(item.get("font_color") or item_ass_style["primary_color"] or font.get("color", "#ffffff"))
+            outline_color = ass_color(item.get("font_outline_color") or item_ass_style["outline_color"] or font.get("outline_color", "#000000"))
             font_for_geometry = dict(font)
             font_for_geometry["family"] = font_family
-            font_for_geometry["size"] = int(float(item.get("font_size", font.get("size", 44)) or 44))
+            font_for_geometry["size"] = int(float(item.get("font_size") or item_ass_style["font_size"] or font.get("size", 44)))
             geometry = frame_canvas_geometry(item, frame_preset or {}, layout, font_for_geometry, canvas_size=canvas_size)
-            text_center_x, text_center_y = geometry["text_center"]
+            has_decoration_layout = bool(item.get("layout_preset_id") or item.get("frame_preset_id"))
+            if has_decoration_layout:
+                text_center_x, text_center_y = geometry["text_center"]
+                text_alignment = 5
+            else:
+                text_alignment = item_ass_style["alignment"]
+                text_center_x, text_center_y = ass_alignment_position(
+                    text_alignment,
+                    (item_ass_style["margin_l"], item_ass_style["margin_r"], item_ass_style["margin_v"]),
+                    canvas_size,
+                )
             wrapped_text = r"\N".join(sanitize_ass_text(line) for line in geometry.get("lines", []) if line is not None) or sanitize_ass_text(item.get("text", ""))
             text_tags = [
-                r"\an5",
+                f"\\an{text_alignment}",
                 f"\\pos({text_center_x:.1f},{text_center_y:.1f})",
                 f"\\fn{sanitize_ass_text(font_family)}",
                 f"\\fs{font_size}",
@@ -2714,13 +3144,16 @@ def build_decoration_ass(
                 f"\\3c{outline_color}",
                 f"\\bord{outline}",
                 f"\\shad{shadow}",
+                "\\b1" if item_ass_style["bold"] else "\\b0",
+                "\\i1" if item_ass_style["italic"] else "\\i0",
+                f"\\fsp{item_ass_style['spacing']}",
             ]
             if abs(rotation) > 0.01:
                 text_tags.append(f"\\frz{rotation:.2f}")
             text_tags.append(effect_tags(effect_group, item.get("emotion")))
             ass_lines.append(
                 f"Dialogue: 1,{ass_timecode(start)},{ass_timecode(end)},"
-                f"{style_name},,0,0,0,,{{{''.join(text_tags)}}}{wrapped_text}"
+                f"{style_name},,{item_ass_style['margin_l']},{item_ass_style['margin_r']},{item_ass_style['margin_v']},,{{{''.join(text_tags)}}}{wrapped_text}"
             )
         ass_lines.extend(reaction_dialogues(item, effect_group, start, end, style_name))
     ass_text = "\n".join(ass_lines) + "\n"
@@ -3026,6 +3459,7 @@ def list_projects() -> list[dict]:
                 "has_transcript": (project_dir_path / "transcript" / "transcript.json").exists(),
                 "has_decoration": (project_dir_path / "decoration" / "decoration_project.json").exists(),
                 "has_output": any((project_dir_path / "output").glob("final.*")),
+                "workflow": info.get("workflow") if isinstance(info.get("workflow"), dict) else None,
             }
         )
     items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
@@ -3854,11 +4288,12 @@ def build_scene_catalog_from_subtitles(subtitles: list[dict], existing_scenes: l
             continue
         existing_by_id[scene_id] = dict(scene)
     scenes: list[dict] = []
-    for index, sub in enumerate(subtitles or [], start=1):
+    enabled_subtitles = [sub for sub in (subtitles or []) if sub.get("enabled", True) is not False]
+    for index, sub in enumerate(enabled_subtitles, start=1):
         scene_id = f"scene_{index:04d}"
         existing = existing_by_id.get(scene_id, {})
-        start = float(sub.get("start_sec", sub.get("output_start_sec", 0.0)) or 0.0)
-        end = float(sub.get("end_sec", sub.get("output_end_sec", start)) or start)
+        start = float(sub.get("output_start_sec", sub.get("edited_start_sec", sub.get("start_sec", 0.0))) or 0.0)
+        end = float(sub.get("output_end_sec", sub.get("edited_end_sec", sub.get("end_sec", start))) or start)
         comment_id = str(sub.get("id") or sub.get("subtitle_id") or f"sub_{index:04d}")
         sub["scene_id"] = scene_id
         scenes.append(
@@ -3931,6 +4366,233 @@ def resolve_export_profile(project_id: str, output_profile: str | None = None) -
     raise HTTPException(status_code=400, detail="不正な出力プリセットです")
 
 
+def normalize_subtitle_export_options(
+    subtitle_mode: str | None = None,
+    subtitle_format: str | None = None,
+    burn_subtitles: bool = False,
+) -> tuple[str, str]:
+    mode = str(subtitle_mode or "external").strip().lower()
+    subtitle_type = str(subtitle_format or "srt").strip().lower()
+    if burn_subtitles and mode == "external":
+        mode = "burn"
+    if mode not in {"external", "burn", "embed"}:
+        raise HTTPException(status_code=400, detail="字幕出力方式が不正です")
+    if subtitle_type not in {"srt", "plain_ass", "ass"}:
+        raise HTTPException(status_code=400, detail="字幕形式が不正です")
+    return mode, subtitle_type
+
+
+def embedded_subtitle_output_spec(video_path: Path, subtitle_format: str) -> tuple[Path, str]:
+    if subtitle_format == "ass":
+        return video_path.with_suffix(".mkv"), "ass"
+    if video_path.suffix.lower() == ".mp4":
+        return video_path, "mov_text"
+    return video_path, "srt"
+
+
+def mux_subtitle_track(
+    project_id: str,
+    video_path: Path,
+    subtitle_path: Path,
+    subtitle_format: str,
+) -> tuple[Path, str]:
+    base = require_project(project_id)
+    output_path, subtitle_codec = embedded_subtitle_output_spec(video_path, subtitle_format)
+    temp_output = output_path.with_name(f"{output_path.stem}_subtitle_mux{output_path.suffix}")
+    run_command(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(subtitle_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-map",
+            "1:0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "copy",
+            "-c:s",
+            subtitle_codec,
+            "-metadata:s:s:0",
+            "language=jpn",
+            "-metadata:s:s:0",
+            "title=Japanese",
+            "-disposition:s:0",
+            "default",
+            str(temp_output),
+        ],
+        base / "temp" / "logs" / "final_subtitle_mux.log",
+    )
+    if output_path.exists() and output_path != video_path:
+        output_path.unlink()
+    temp_output.replace(output_path)
+    if output_path != video_path and video_path.exists():
+        video_path.unlink()
+    return output_path, subtitle_codec
+
+
+def sanitize_export_name(value: str | None, fallback: str = "output") -> str:
+    name = str(value or "").strip()
+    if Path(name).suffix.lower() in {".mp4", ".mkv", ".srt", ".ass"}:
+        name = Path(name).stem
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", name).strip(" .")
+    if not name:
+        name = fallback
+    reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+    if name.upper() in reserved:
+        name = f"_{name}"
+    return name[:160]
+
+
+def _available_export_stem(directory: Path, stem: str, suffixes: list[str]) -> str:
+    candidate = stem
+    index = 2
+    while any((directory / f"{candidate}{suffix}").exists() for suffix in suffixes):
+        candidate = f"{stem}_{index}"
+        index += 1
+    return candidate
+
+
+def _copy_export_artifact(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temp_path)
+        last_error: PermissionError | None = None
+        for attempt in range(5):
+            try:
+                os.replace(temp_path, destination)
+                return
+            except PermissionError as exc:
+                last_error = exc
+                time.sleep(0.05 * (attempt + 1))
+        if last_error is not None:
+            raise HTTPException(status_code=500, detail=f"出力先ファイルが使用中です: {destination}") from last_error
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
+def publish_export_result(
+    project_id: str,
+    result: dict,
+    output_directory: str,
+    output_filename: str | None = None,
+    create_project_subdirectory: bool = False,
+) -> dict:
+    directory_text = str(output_directory or "").strip()
+    if not directory_text:
+        return result
+    destination_root = Path(directory_text).expanduser()
+    if not destination_root.is_absolute():
+        raise HTTPException(status_code=400, detail="出力先は絶対パスで指定してください")
+    try:
+        destination_root = destination_root.resolve()
+        destination_root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"出力先を作成できません: {destination_root}") from exc
+
+    info = project_info(project_id)
+    project_name = sanitize_export_name(info.get("project_name"), project_id)
+    destination = destination_root / project_name if create_project_subdirectory else destination_root
+    destination.mkdir(parents=True, exist_ok=True)
+    requested_stem = sanitize_export_name(output_filename, project_name)
+
+    video_source = Path(str(result.get("video_path") or ""))
+    if not video_source.exists():
+        raise HTTPException(status_code=500, detail="出力済み動画が見つかりません")
+    subtitle_source: Path | None = None
+    if result.get("subtitle_mode") == "external":
+        candidate = Path(str(result.get("subtitle_path") or ""))
+        if candidate.exists():
+            subtitle_source = candidate
+    suffixes = [video_source.suffix]
+    if subtitle_source is not None:
+        suffixes.append(subtitle_source.suffix)
+    output_stem = _available_export_stem(destination, requested_stem, suffixes)
+
+    video_destination = destination / f"{output_stem}{video_source.suffix}"
+    _copy_export_artifact(video_source, video_destination)
+    subtitle_destination: Path | None = None
+    if subtitle_source is not None:
+        subtitle_destination = destination / f"{output_stem}{subtitle_source.suffix}"
+        _copy_export_artifact(subtitle_source, subtitle_destination)
+
+    published = dict(result)
+    published["workspace_video_path"] = str(video_source)
+    published["workspace_subtitle_path"] = str(subtitle_source) if subtitle_source is not None else None
+    published["video_path"] = str(video_destination)
+    published["subtitle_path"] = str(subtitle_destination) if subtitle_destination is not None else None
+    published["published_directory"] = str(destination)
+    published["published_filename"] = output_stem
+    audit_project_event(
+        project_id,
+        "export.publish",
+        context={
+            "destination": str(destination),
+            "video_path": str(video_destination),
+            "subtitle_path": str(subtitle_destination) if subtitle_destination is not None else None,
+            "create_project_subdirectory": create_project_subdirectory,
+        },
+    )
+    return published
+
+
+def choose_output_directory(initial_directory: str | None = None) -> str | None:
+    root = None
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        initial_path = Path(initial_directory).expanduser() if initial_directory else Path.home()
+        if not initial_path.exists():
+            initial_path = next((parent for parent in initial_path.parents if parent.exists()), Path.home())
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selected = filedialog.askdirectory(
+            parent=root,
+            title="出力先フォルダを選択",
+            initialdir=str(initial_path),
+            mustexist=False,
+        )
+        return str(Path(selected).resolve()) if selected else None
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"フォルダ選択画面を開けません: {exc}") from exc
+    finally:
+        if root is not None:
+            root.destroy()
+
+
+def configured_export_directory(project_id: str, app_settings: dict | None = None) -> Path:
+    base = require_project(project_id)
+    settings = app_settings or {}
+    configured_root = str(settings.get("default_output_directory") or "").strip()
+    if not configured_root:
+        return base / "output"
+    root = Path(configured_root).expanduser()
+    if not root.is_absolute():
+        raise HTTPException(status_code=400, detail="既定の出力先は絶対パスで指定してください")
+    if settings.get("output_create_project_subdirectory", True) is not False:
+        info = project_info(project_id)
+        root = root / sanitize_export_name(info.get("project_name"), project_id)
+    return root.resolve()
+
+
+def open_directory_in_file_manager(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        subprocess.Popen(["explorer.exe", str(path)], close_fds=True)
+        return
+    raise HTTPException(status_code=501, detail="このOSのフォルダ表示には未対応です")
+
+
 def create_project_dirs(base: Path) -> None:
     for name in ["source", "audio", "transcript", "subtitles", "analysis", "preview", "output", "decoration", "temp/segments", "temp/logs"]:
         (base / name).mkdir(parents=True, exist_ok=True)
@@ -3965,6 +4627,9 @@ def create_project_from_local_file(source_file: Path, project_name: str | None =
             "default_emotion_preset_id": "emotion_neutral",
             "default_subtitle_style_preset_id": "subtitle_standard",
             "output_profile": "mp4_compat",
+            "audio_stream_index": None,
+            "subtitle_click_playback_mode": "jump",
+            "ass_subtitle_defaults": dict(DEFAULT_ASS_SUBTITLE_STYLE),
         },
     }
     atomic_write_json(base / "project.json", info)
@@ -4074,7 +4739,35 @@ def probe_video(video_path: str) -> dict:
     )
     raw = json.loads(proc.stdout)
     video_stream = next((s for s in raw.get("streams", []) if s.get("codec_type") == "video"), {})
-    audio_stream = next((s for s in raw.get("streams", []) if s.get("codec_type") == "audio"), None)
+    audio_streams = [s for s in raw.get("streams", []) if s.get("codec_type") == "audio"]
+    default_audio_stream = next(
+        (stream for stream in audio_streams if int((stream.get("disposition") or {}).get("default", 0) or 0) == 1),
+        audio_streams[0] if audio_streams else None,
+    )
+    format_start_time = float(raw.get("format", {}).get("start_time", 0.0) or 0.0)
+    audio_tracks = []
+    for audio_position, stream in enumerate(audio_streams):
+        tags = stream.get("tags") or {}
+        disposition = stream.get("disposition") or {}
+        audio_tracks.append(
+            {
+                "stream_index": int(stream.get("index", audio_position)),
+                "audio_position": audio_position,
+                "codec_name": str(stream.get("codec_name") or "unknown"),
+                "codec_long_name": str(stream.get("codec_long_name") or ""),
+                "sample_rate": int(stream.get("sample_rate", 0) or 0) or None,
+                "channels": int(stream.get("channels", 0) or 0) or None,
+                "channel_layout": str(stream.get("channel_layout") or ""),
+                "bit_rate": int(stream.get("bit_rate", 0) or 0) or None,
+                "start_time_sec": float(stream.get("start_time", format_start_time) or format_start_time),
+                "timeline_offset_sec": round(float(stream.get("start_time", format_start_time) or format_start_time) - format_start_time, 6),
+                "language": str(tags.get("language") or "und"),
+                "title": str(tags.get("title") or ""),
+                "is_default": int(disposition.get("default", 0) or 0) == 1,
+                "is_forced": int(disposition.get("forced", 0) or 0) == 1,
+                "is_commentary": int(disposition.get("comment", 0) or 0) == 1,
+            }
+        )
     fps = 0.0
     rate = video_stream.get("avg_frame_rate") or video_stream.get("r_frame_rate") or "0/1"
     if "/" in rate:
@@ -4088,18 +4781,37 @@ def probe_video(video_path: str) -> dict:
         "width": int(video_stream.get("width", 0)),
         "height": int(video_stream.get("height", 0)),
         "fps": round(fps, 3),
-        "has_audio": audio_stream is not None,
-        "audio_sample_rate": int(audio_stream.get("sample_rate", 0)) if audio_stream else None,
+        "has_audio": default_audio_stream is not None,
+        "audio_sample_rate": int(default_audio_stream.get("sample_rate", 0)) if default_audio_stream else None,
+        "audio_tracks": audio_tracks,
+        "default_audio_stream_index": int(default_audio_stream.get("index")) if default_audio_stream else None,
         "file_size": int(raw.get("format", {}).get("size", path.stat().st_size)),
     }
 
 
-def extract_audio(project_id: str, video_path: str, start_sec: float, end_sec: float, compute_profile: str = "auto") -> dict:
+def extract_audio(
+    project_id: str,
+    video_path: str,
+    start_sec: float,
+    end_sec: float,
+    compute_profile: str = "auto",
+    audio_stream_index: int | None = None,
+) -> dict:
     ensure_tool("ffmpeg")
     if start_sec < 0 or end_sec <= start_sec:
         raise HTTPException(status_code=400, detail="指定区間が不正です")
     normalized_profile = normalize_compute_profile(compute_profile)
     base = require_project(project_id)
+    media_info = probe_video(video_path)
+    audio_tracks = media_info.get("audio_tracks") or []
+    if not audio_tracks:
+        raise HTTPException(status_code=400, detail="動画に音声トラックがありません")
+    selected_stream_index = audio_stream_index
+    if selected_stream_index is None:
+        selected_stream_index = media_info.get("default_audio_stream_index")
+    if selected_stream_index is None or not any(int(track["stream_index"]) == int(selected_stream_index) for track in audio_tracks):
+        raise HTTPException(status_code=400, detail="指定した音声トラックが動画内にありません")
+    selected_stream_index = int(selected_stream_index)
     output = base / "audio" / "source_range.wav"
     log = base / "temp" / "logs" / "audio_extract.log"
     run_command(
@@ -4113,6 +4825,8 @@ def extract_audio(project_id: str, video_path: str, start_sec: float, end_sec: f
             f"{end_sec:.3f}",
             "-i",
             video_path,
+            "-map",
+            f"0:{selected_stream_index}",
             "-vn",
             "-ac",
             "1",
@@ -4124,8 +4838,72 @@ def extract_audio(project_id: str, video_path: str, start_sec: float, end_sec: f
         ],
         log,
     )
-    audit_project_event(project_id, "extract_audio", context={"start_sec": start_sec, "end_sec": end_sec, "compute_profile": normalized_profile})
-    return {"audio_path": str(output), "compute_profile": normalized_profile}
+    isolated_cache = base / "analysis" / "voice_isolation" / "voice_isolated.wav"
+    if isolated_cache.exists():
+        isolated_cache.unlink()
+    audit_project_event(
+        project_id,
+        "extract_audio",
+        context={
+            "start_sec": start_sec,
+            "end_sec": end_sec,
+            "compute_profile": normalized_profile,
+            "audio_stream_index": selected_stream_index,
+        },
+    )
+    return {
+        "audio_path": str(output),
+        "compute_profile": normalized_profile,
+        "audio_stream_index": selected_stream_index,
+    }
+
+
+def prepare_audio_track_preview(project_id: str, audio_stream_index: int) -> dict:
+    ensure_tool("ffmpeg")
+    base = require_project(project_id)
+    source = project_source_video(project_id)
+    media_info = probe_video(str(source))
+    selected_track = next(
+        (track for track in media_info.get("audio_tracks") or [] if int(track.get("stream_index", -1)) == int(audio_stream_index)),
+        None,
+    )
+    if selected_track is None:
+        raise HTTPException(status_code=400, detail="指定した音声トラックが動画内にありません")
+    output = base / "preview" / f"audio_track_{int(audio_stream_index)}.m4a"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    cache_hit = output.exists() and output.stat().st_mtime >= source.stat().st_mtime
+    if not cache_hit:
+        run_command(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(source),
+                "-map",
+                f"0:{int(audio_stream_index)}",
+                "-vn",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                str(output),
+            ],
+            base / "temp" / "logs" / f"audio_track_preview_{int(audio_stream_index)}.log",
+        )
+    audit_project_event(
+        project_id,
+        "audio_track_preview.prepared",
+        context={"audio_stream_index": int(audio_stream_index), "output_path": str(output)},
+    )
+    return {
+        "audio_path": str(output),
+        "audio_url": f"/api/projects/{project_id}/media/preview/{output.name}",
+        "audio_stream_index": int(audio_stream_index),
+        "timeline_offset_sec": float(selected_track.get("timeline_offset_sec", 0.0) or 0.0),
+        "cached": cache_hit,
+    }
 
 
 def transcribe_with_faster_whisper(project_id: str, audio_path: str, language: str, model: str, vad_filter: bool = False, word_timestamps: bool = False) -> dict:
@@ -4192,7 +4970,7 @@ def transcribe_audio(
     compute_profile: str = "auto",
     engine: str = "whisper.cpp",
     silence_threshold_db: float = -35.0,
-    vad_threshold: float = 0.25,
+    vad_threshold: float = 0.5,
     vad_min_speech_duration_ms: int = 100,
     vad_min_silence_duration_ms: int = 80,
     vad_speech_pad_ms: int = 50,
@@ -4230,6 +5008,17 @@ def transcribe_audio(
                 detail="GPUプロファイルでは文字起こしエンジンがGPU対応ではないため実行できません: " + " / ".join(gpu_blockers),
             )
 
+    begin_transcription_progress(
+        project_id,
+        audio,
+        engine,
+        model,
+        normalized_profile,
+        voice_isolation_enabled,
+        use_whisperx_alignment,
+    )
+    if voice_isolation_enabled:
+        update_transcription_progress(project_id, "声とBGMを分離", "voice_isolation", 3, 25, 0.22)
     voice_isolation = isolate_voice_audio(project_id, str(audio), voice_isolation_engine) if voice_isolation_enabled else {
         "enabled": False,
         "engine": "none",
@@ -4248,8 +5037,12 @@ def transcribe_audio(
             prepared_audio_cache[cache_key] = prepare_transcription_audio(project_id, source_path, purpose=purpose)
         return prepared_audio_cache[cache_key]
 
+    preparation_start = 25 if voice_isolation_enabled else 3
+    preparation_end = 30 if voice_isolation_enabled else 10
+    update_transcription_progress(project_id, "解析用音声を準備", "audio_preparation", preparation_start, preparation_end, 0.07)
     whisper_audio_path = prepared_audio(whisper_source_audio, "whisper")
     vad_audio_path = prepared_audio(vad_source_audio, "vad")
+    update_transcription_progress(project_id, "Whisper文字起こし", "whisper_transcription", preparation_end, 78, 0.58)
     if engine == "whisper.cpp":
         result = transcribe_with_whisper_cpp(project_id, whisper_audio_path, language, model, normalized_profile)
     elif engine == "whisper.cpp-vad":
@@ -4288,6 +5081,7 @@ def transcribe_audio(
     need_vad = detection_mode in {"vad", "hybrid"} or speaker_diarization_enabled or align_timestamps
     vad_intervals = {"speech_intervals": [], "compute_profile": normalized_profile, "status": "skipped"}
     if need_vad:
+        update_transcription_progress(project_id, "VAD発話区間を検出", "vad_detection", 78, 86, 0.08)
         vad_intervals = detect_vad_speech_intervals(
             project_id,
             vad_audio_path,
@@ -4297,6 +5091,24 @@ def transcribe_audio(
             speech_pad_sec=vad_speech_pad_ms / 1000.0,
             merge_silence_gap_sec=merge_silence_gap_sec,
         )
+    unfiltered_subtitles = [dict(item) for item in raw_subtitles]
+    discarded_hallucinations: list[dict] = []
+    if vad_intervals.get("speech_intervals"):
+        raw_subtitles, discarded_hallucinations = filter_repetitive_hallucinations(
+            raw_subtitles,
+            vad_intervals.get("speech_intervals", []),
+        )
+        if discarded_hallucinations:
+            audit_project_detail_event(
+                project_id,
+                "transcribe.hallucination_filter",
+                stream="processing",
+                context={
+                    "discarded_count": len(discarded_hallucinations),
+                    "kept_count": len(raw_subtitles),
+                    "items": discarded_hallucinations,
+                },
+            )
     speaker_diarization = run_speaker_diarization(
         project_id,
         diarization_audio_path=isolated_audio_path or str(audio),
@@ -4311,6 +5123,7 @@ def transcribe_audio(
         speaker_diarization.get("speaker_segments", []),
         speaker_roster=speaker_diarization.get("speaker_roster", []),
     )
+    update_transcription_progress(project_id, "波形と字幕を解析", "waveform_analysis", 86, 93, 0.07)
     waveform_profile = build_waveform_analysis(vad_audio_path)
     waveform_json_path = base / "analysis" / "waveform.json"
     waveform_png_path = base / "analysis" / "waveform.png"
@@ -4335,7 +5148,9 @@ def transcribe_audio(
             "image_path": str(waveform_png_path),
         },
     )
+    result["unfiltered_subtitles"] = unfiltered_subtitles
     result["raw_subtitles"] = raw_subtitles
+    result["discarded_hallucination_subtitles"] = discarded_hallucinations
     result["vad_intervals"] = vad_intervals.get("speech_intervals", [])
     result["speech_intervals"] = result["vad_intervals"]
     result["voice_isolation"] = voice_isolation
@@ -4347,11 +5162,17 @@ def transcribe_audio(
     result["speaker_diarization"] = speaker_diarization
     result["speaker_roster"] = speaker_diarization.get("speaker_roster", [])
     result["subtitle_correction"] = {
+        "algorithm": "vad_boundary_limited_v2",
         "pre_margin_sec": pre_margin_sec,
         "post_margin_sec": post_margin_sec,
         "min_speech_duration_sec": min_speech_duration_sec,
         "merge_silence_gap_sec": merge_silence_gap_sec,
         "silence_threshold_db": silence_threshold_db,
+        "max_match_gap_sec": 0.5,
+        "min_overlap_ratio": 0.1,
+        "max_start_adjustment_sec": 0.75,
+        "max_end_adjustment_sec": 0.75,
+        "preserve_subtitle_units": True,
     }
     result["subtitles"] = raw_subtitles
     result["waveform"] = waveform_profile
@@ -4389,6 +5210,11 @@ def transcribe_audio(
             "device": "cpu" if align_timestamps else "none",
             "status": result.get("alignment_status", "skipped" if not align_timestamps else "unknown"),
         },
+        "hallucination_filter": {
+            "enabled": bool(vad_intervals.get("speech_intervals")),
+            "discarded_count": len(discarded_hallucinations),
+            "policy": "repetition_with_weak_vad_support",
+        },
     }
     audit_project_detail_event(
         project_id,
@@ -4421,6 +5247,7 @@ def transcribe_audio(
 
     alignment_error: str | None = None
     if align_timestamps:
+        update_transcription_progress(project_id, "字幕タイミングを補正", "subtitle_alignment", 93, 98, 0.12 if use_whisperx_alignment else 0.04)
         try:
             if use_whisperx_alignment:
                 aligned_result = align_subtitles_with_whisperx(project_id, whisper_audio_path, result, waveform_profile=waveform_profile)
@@ -4467,6 +5294,7 @@ def transcribe_audio(
         "heavy": bool(use_whisperx_alignment),
     }
 
+    update_transcription_progress(project_id, "字幕ファイルを保存", "subtitle_save", 98, 99.5, 0.02)
     atomic_write_json(transcript_path, result, backup=True)
     audit_project_event(
         project_id,
@@ -4537,6 +5365,379 @@ def transcribe_audio(
     }
 
 
+def _subtitle_source_relative_bounds(item: dict, source_range_start: float) -> tuple[float, float]:
+    if item.get("range_relative_start_sec") is not None:
+        start = float(item.get("range_relative_start_sec") or 0.0)
+        end = float(item.get("range_relative_end_sec", start) or start)
+        return start, max(start, end)
+    for start_key, end_key in (
+        ("original_start_sec", "original_end_sec"),
+        ("source_start_sec", "source_end_sec"),
+    ):
+        if item.get(start_key) is not None:
+            start = float(item.get(start_key) or 0.0) - source_range_start
+            end = float(item.get(end_key, start + source_range_start) or (start + source_range_start)) - source_range_start
+            return start, max(start, end)
+    start = float(item.get("start_sec", item.get("output_start_sec", 0.0)) or 0.0)
+    end = float(item.get("end_sec", item.get("output_end_sec", start)) or start)
+    return start, max(start, end)
+
+
+def merge_range_transcription_subtitles(
+    existing_subtitles: list[dict],
+    replacement_subtitles: list[dict],
+    range_start_sec: float,
+    range_end_sec: float,
+    source_range_start: float,
+    replacement_mode: str = "text_and_timing",
+) -> dict:
+    mode = replacement_mode if replacement_mode in {"text_only", "text_and_timing"} else "text_and_timing"
+    existing = [copy.deepcopy(item) for item in existing_subtitles]
+    replacements = [copy.deepcopy(item) for item in replacement_subtitles]
+
+    def overlap_with_range(item: dict) -> float:
+        start, end = _subtitle_source_relative_bounds(item, source_range_start)
+        return max(0.0, min(end, range_end_sec) - max(start, range_start_sec))
+
+    affected = [item for item in existing if overlap_with_range(item) > 0.0]
+    unaffected = [item for item in existing if overlap_with_range(item) <= 0.0]
+    affected_ids = [str(item.get("id") or "") for item in affected]
+
+    if mode == "text_only":
+        merged = existing
+        for item in affected:
+            old_start, old_end = _subtitle_source_relative_bounds(item, source_range_start)
+            matches: list[tuple[float, float, dict]] = []
+            for replacement in replacements:
+                new_start, new_end = _subtitle_source_relative_bounds(replacement, source_range_start)
+                overlap = max(0.0, min(old_end, new_end) - max(old_start, new_start))
+                if overlap > 0.0:
+                    matches.append((new_start, overlap, replacement))
+            if matches:
+                matches.sort(key=lambda value: value[0])
+                texts = [str(value[2].get("text") or "").strip() for value in matches]
+                item["text"] = "\n".join(text for text in texts if text)
+    else:
+        used_existing_ids: set[str] = set()
+        timing_keys = {
+            "id", "text", "start_sec", "end_sec", "range_relative_start_sec", "range_relative_end_sec",
+            "source_start_sec", "source_end_sec", "original_start_sec", "original_end_sec", "original_start",
+            "original_end", "whisper_start_sec", "whisper_end_sec", "corrected_start_sec", "corrected_end_sec",
+            "vad_start_sec", "vad_end_sec", "auto_start_sec", "auto_end_sec", "manual_start_sec", "manual_end_sec",
+            "selected_start_sec", "selected_end_sec", "start_timing_source", "end_timing_source",
+            "edited_start_sec", "edited_end_sec", "edited_start", "edited_end", "output_start_sec", "output_end_sec",
+            "segment_id", "split_piece_index", "split_piece_total", "split_original_id", "split_pieces",
+        }
+        for replacement in replacements:
+            new_start, new_end = _subtitle_source_relative_bounds(replacement, source_range_start)
+            best: dict | None = None
+            best_overlap = 0.0
+            for item in affected:
+                old_start, old_end = _subtitle_source_relative_bounds(item, source_range_start)
+                overlap = max(0.0, min(old_end, new_end) - max(old_start, new_start))
+                if overlap > best_overlap:
+                    best = item
+                    best_overlap = overlap
+            if best:
+                for key, value in best.items():
+                    if key not in timing_keys and key not in replacement:
+                        replacement[key] = copy.deepcopy(value)
+                best_id = str(best.get("id") or "")
+                if best_id and best_id not in used_existing_ids:
+                    replacement["id"] = best_id
+                    used_existing_ids.add(best_id)
+        merged = unaffected + replacements
+
+    merged.sort(
+        key=lambda item: (
+            float(item.get("output_start_sec", item.get("range_relative_start_sec", 0.0)) or 0.0),
+            float(item.get("output_end_sec", item.get("range_relative_end_sec", 0.0)) or 0.0),
+        )
+    )
+    return {
+        "replacement_mode": mode,
+        "affected_subtitle_ids": affected_ids,
+        "affected_subtitles": affected,
+        "replacement_subtitles": replacements,
+        "merged_subtitles": merged,
+    }
+
+
+def offset_subtitle_timing_candidates(item: dict, offset_sec: float, selected_start_sec: float, selected_end_sec: float) -> dict:
+    shifted = dict(item)
+    for timing_key in (
+        "whisper_start_sec", "whisper_end_sec", "vad_start_sec", "vad_end_sec",
+        "normalized_start_sec", "normalized_end_sec", "corrected_start_sec", "corrected_end_sec",
+        "auto_start_sec", "auto_end_sec", "manual_start_sec", "manual_end_sec",
+        "selected_start_sec", "selected_end_sec",
+    ):
+        if shifted.get(timing_key) is not None:
+            shifted[timing_key] = round(float(offset_sec) + float(shifted[timing_key]), 3)
+    shifted["auto_start_sec"] = round(selected_start_sec, 3)
+    shifted["auto_end_sec"] = round(selected_end_sec, 3)
+    shifted["selected_start_sec"] = round(selected_start_sec, 3)
+    shifted["selected_end_sec"] = round(selected_end_sec, 3)
+    return shifted
+
+
+def transcribe_audio_range(
+    project_id: str,
+    start_sec: float,
+    end_sec: float,
+    existing_subtitles: list[dict],
+    language: str = "ja",
+    model: str = "small",
+    compute_profile: str = "auto",
+    engine: str = "whisper.cpp-vad",
+    replacement_mode: str = "text_and_timing",
+    analysis_padding_sec: float = 1.5,
+    detection_mode: str = "vad",
+    voice_isolation_enabled: bool = False,
+    use_isolated_voice_for_vad: bool = False,
+    use_isolated_voice_for_whisper: bool = False,
+    vad_threshold: float = 0.5,
+    vad_min_speech_duration_ms: int = 100,
+    vad_min_silence_duration_ms: int = 80,
+    vad_speech_pad_ms: int = 50,
+    pre_margin_sec: float = 0.3,
+    post_margin_sec: float = 0.5,
+    min_speech_duration_sec: float = 0.2,
+    merge_silence_gap_sec: float = 0.5,
+    align_timestamps: bool = False,
+) -> dict:
+    ensure_tool("ffmpeg")
+    base = require_project(project_id)
+    source_audio = resolve_project_path(project_id, "audio", "source_range.wav")
+    if not source_audio.exists():
+        raise HTTPException(status_code=404, detail="先に指定範囲の音声を抽出してください")
+    if start_sec < 0 or end_sec <= start_sec:
+        raise HTTPException(status_code=400, detail="再文字起こし区間が不正です")
+    with wave.open(str(source_audio), "rb") as wav_file:
+        source_duration = wav_file.getnframes() / max(1, wav_file.getframerate())
+    if start_sec >= source_duration:
+        raise HTTPException(status_code=400, detail="再文字起こし開始位置が音声範囲外です")
+
+    core_start = max(0.0, float(start_sec))
+    core_end = min(source_duration, float(end_sec))
+    padding = min(10.0, max(0.0, float(analysis_padding_sec)))
+    analysis_start = max(0.0, core_start - padding)
+    analysis_end = min(source_duration, core_end + padding)
+    warnings: list[str] = []
+
+    isolated_source: Path | None = None
+    transcript_path = resolve_project_path(project_id, "transcript", "transcript.json")
+    if voice_isolation_enabled and transcript_path.exists():
+        try:
+            transcript = read_json_repairing_extra_data(transcript_path)
+            candidate = Path(str(transcript.get("voice_isolated_audio_path") or ""))
+            if candidate.exists() and candidate.resolve().is_relative_to(base.resolve()):
+                isolated_source = candidate
+        except (OSError, ValueError, json.JSONDecodeError):
+            isolated_source = None
+    if voice_isolation_enabled and not isolated_source:
+        warnings.append("保存済みの声抽出音声がないため、この区間は元音声で解析しました")
+
+    clip_id = uuid.uuid4().hex[:10]
+    clip_cache: dict[str, Path] = {}
+
+    def extract_clip(source: Path, purpose: str) -> Path:
+        cache_key = str(source.resolve())
+        if cache_key in clip_cache:
+            return clip_cache[cache_key]
+        output = base / "temp" / f"range_retranscribe_{clip_id}_{purpose}.wav"
+        run_command(
+            [
+                "ffmpeg", "-y", "-ss", f"{analysis_start:.3f}", "-to", f"{analysis_end:.3f}",
+                "-i", str(source), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(output),
+            ],
+            base / "temp" / "logs" / f"range_retranscribe_{clip_id}_{purpose}.log",
+        )
+        clip_cache[cache_key] = output
+        return output
+
+    whisper_full_source = isolated_source if use_isolated_voice_for_whisper and isolated_source else source_audio
+    vad_full_source = isolated_source if use_isolated_voice_for_vad and isolated_source else source_audio
+    whisper_clip = extract_clip(whisper_full_source, "whisper")
+    vad_clip = extract_clip(vad_full_source, "vad")
+    normalized_profile = normalize_compute_profile(compute_profile)
+
+    if engine == "whisper.cpp":
+        result = transcribe_with_whisper_cpp(project_id, str(whisper_clip), language, model, normalized_profile)
+    elif engine == "whisper.cpp-vad":
+        result = transcribe_with_whisper_cpp_vad(
+            project_id, str(whisper_clip), language, model, normalized_profile,
+            vad_threshold=vad_threshold,
+            vad_min_speech_duration_ms=vad_min_speech_duration_ms,
+            vad_min_silence_duration_ms=vad_min_silence_duration_ms,
+            vad_speech_pad_ms=vad_speech_pad_ms,
+        )
+    elif engine in {"faster-whisper", "faster-whisper-vad"}:
+        result = transcribe_with_faster_whisper(
+            project_id, str(whisper_clip), language, model,
+            vad_filter=engine == "faster-whisper-vad", word_timestamps=engine == "faster-whisper-vad",
+        )
+    else:
+        try:
+            import whisper
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"openai-whisperを読み込めません: {exc}") from exc
+        whisper_model = whisper.load_model(model)
+        result = whisper_model.transcribe(str(whisper_clip), language=language, verbose=False)
+
+    raw_subtitles = normalize_subtitle_durations(subtitles_from_whisper(result))
+    vad_intervals: list[dict] = []
+    vad_required = detection_mode in {"vad", "hybrid"} or align_timestamps
+    if vad_required:
+        vad_result = detect_vad_speech_intervals(
+            project_id,
+            str(vad_clip),
+            compute_profile=normalized_profile,
+            vad_threshold=vad_threshold,
+            min_speech_duration_sec=min_speech_duration_sec,
+            min_silence_duration_sec=vad_min_silence_duration_ms / 1000.0,
+            speech_pad_sec=vad_speech_pad_ms / 1000.0,
+            merge_silence_gap_sec=merge_silence_gap_sec,
+        )
+        vad_intervals = vad_result.get("speech_intervals", [])
+        if vad_intervals:
+            raw_subtitles, _ = filter_repetitive_hallucinations(raw_subtitles, vad_intervals)
+        vad_supported_subtitles: list[dict] = []
+        for subtitle in raw_subtitles:
+            subtitle_start = float(subtitle.get("output_start_sec", subtitle.get("start_sec", 0.0)) or 0.0)
+            subtitle_end = float(subtitle.get("output_end_sec", subtitle.get("end_sec", subtitle_start)) or subtitle_start)
+            subtitle_duration = max(0.001, subtitle_end - subtitle_start)
+            speech_overlap = sum(
+                max(
+                    0.0,
+                    min(subtitle_end, float(interval.get("end_sec", interval.get("speech_end_sec", 0.0)) or 0.0))
+                    - max(subtitle_start, float(interval.get("start_sec", interval.get("speech_start_sec", 0.0)) or 0.0)),
+                )
+                for interval in vad_intervals
+            )
+            if speech_overlap >= min(0.10, subtitle_duration * 0.10):
+                vad_supported_subtitles.append(subtitle)
+        removed_without_vad = len(raw_subtitles) - len(vad_supported_subtitles)
+        raw_subtitles = vad_supported_subtitles
+        if removed_without_vad:
+            warnings.append(f"VADの発話裏付けがない候補を{removed_without_vad}件除外しました")
+    if align_timestamps and vad_intervals:
+        raw_subtitles = apply_vad_subtitle_corrections(
+            raw_subtitles,
+            vad_intervals,
+            subtitle_start_strategy="hybrid",
+            pre_margin_sec=pre_margin_sec,
+            post_margin_sec=post_margin_sec,
+        )
+
+    plan_path = resolve_project_path(project_id, "edit_plan.json")
+    plan = load_project_edit_plan(project_id) if plan_path.exists() else {}
+    source_range = plan.get("source_range") or {"start_sec": 0.0, "end_sec": source_duration}
+    source_range_start = float(source_range.get("start_sec", 0.0) or 0.0)
+    segments = plan.get("segments") or [
+        {
+            "id": "seg_full",
+            "enabled": True,
+            "range_relative_start_sec": 0.0,
+            "range_relative_end_sec": source_duration,
+            "output_start_sec": 0.0,
+            "output_end_sec": source_duration,
+        }
+    ]
+    replacements: list[dict] = []
+    for index, subtitle in enumerate(raw_subtitles, start=1):
+        local_start = float(subtitle.get("output_start_sec", subtitle.get("start_sec", 0.0)) or 0.0)
+        local_end = float(subtitle.get("output_end_sec", subtitle.get("end_sec", local_start)) or local_start)
+        relative_start = analysis_start + local_start
+        relative_end = analysis_start + local_end
+        if min(relative_end, core_end) <= max(relative_start, core_start):
+            continue
+        relative_start = max(core_start, relative_start)
+        relative_end = min(core_end, relative_end)
+        if relative_end <= relative_start:
+            continue
+        shifted_subtitle = offset_subtitle_timing_candidates(subtitle, analysis_start, relative_start, relative_end)
+        replacements.append(
+            {
+                **shifted_subtitle,
+                "id": f"sub_range_{clip_id}_{index:03d}",
+                "range_relative_start_sec": round(relative_start, 3),
+                "range_relative_end_sec": round(relative_end, 3),
+                "start_sec": round(relative_start, 3),
+                "end_sec": round(relative_end, 3),
+            }
+        )
+    replacements = map_subtitles_to_output(
+        replacements,
+        segments,
+        source_range_start,
+        float(source_range.get("end_sec", source_range_start + source_duration) or (source_range_start + source_duration)),
+    )
+    merge_result = merge_range_transcription_subtitles(
+        existing_subtitles,
+        replacements,
+        core_start,
+        core_end,
+        source_range_start,
+        replacement_mode,
+    )
+    audit_project_event(
+        project_id,
+        "transcribe_audio_range",
+        context={
+            "range_start_sec": core_start,
+            "range_end_sec": core_end,
+            "analysis_start_sec": analysis_start,
+            "analysis_end_sec": analysis_end,
+            "engine": engine,
+            "model": model,
+            "replacement_mode": merge_result["replacement_mode"],
+            "affected_count": len(merge_result["affected_subtitle_ids"]),
+            "replacement_count": len(replacements),
+            "warnings": warnings,
+        },
+    )
+    audit_project_detail_event(
+        project_id,
+        "transcribe_audio_range.proposal",
+        stream="processing",
+        context={
+            "clip_id": clip_id,
+            "range_start_sec": core_start,
+            "range_end_sec": core_end,
+            "affected_subtitle_ids": merge_result["affected_subtitle_ids"],
+            "replacement_subtitles": [
+                {
+                    "id": item.get("id"),
+                    "range_relative_start_sec": item.get("range_relative_start_sec"),
+                    "range_relative_end_sec": item.get("range_relative_end_sec"),
+                    "output_start_sec": item.get("output_start_sec"),
+                    "output_end_sec": item.get("output_end_sec"),
+                    "text": item.get("text", ""),
+                }
+                for item in replacements
+            ],
+            "warnings": warnings,
+        },
+    )
+    finish_transcription_progress(project_id, success=True)
+    return {
+        **merge_result,
+        "range_start_sec": round(core_start, 3),
+        "range_end_sec": round(core_end, 3),
+        "analysis_start_sec": round(analysis_start, 3),
+        "analysis_end_sec": round(analysis_end, 3),
+        "engine": result.get("engine", engine),
+        "model": result.get("model", model),
+        "device": result.get("device", "auto"),
+        "warnings": warnings,
+        "vad_intervals": [
+            {"start_sec": round(analysis_start + float(item.get("start_sec", item.get("start", 0.0)) or 0.0), 3),
+             "end_sec": round(analysis_start + float(item.get("end_sec", item.get("end", 0.0)) or 0.0), 3)}
+            for item in vad_intervals
+        ],
+    }
+
+
 def detect_silence(project_id: str, audio_path: str, threshold_db: float, min_silence_duration: float, compute_profile: str = "auto") -> dict:
     ensure_tool("ffmpeg")
     normalized_profile = normalize_compute_profile(compute_profile)
@@ -4573,7 +5774,7 @@ def detect_vad_speech_intervals(
     audio_path: str,
     *,
     compute_profile: str = "auto",
-    vad_threshold: float = 0.25,
+    vad_threshold: float = 0.5,
     min_speech_duration_sec: float = 0.2,
     min_silence_duration_sec: float = 0.5,
     speech_pad_sec: float = 0.05,
@@ -4619,18 +5820,28 @@ def _load_silero_vad_resources() -> tuple[object, tuple[object, ...]]:
         import torch
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"torchを読み込めません: {exc}") from exc
+    torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
     try:
-        torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
-        model, utils = torch.hub.load("snakers4/silero-vad", "silero_vad", trust_repo=True)
+        from silero_vad import get_speech_timestamps, load_silero_vad
+
+        return load_silero_vad(), (get_speech_timestamps,)
+    except ImportError:
+        pass
+    try:
+        model, utils = torch.hub.load(
+            "snakers4/silero-vad:v6.2.1",
+            "silero_vad",
+            trust_repo=True,
+        )
         return model, utils
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Silero VADを読み込めません: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Silero VAD 6.2.1を読み込めません: {exc}") from exc
 
 
 def detect_silero_speech_intervals(
     audio_path: str,
     *,
-    vad_threshold: float = 0.25,
+    vad_threshold: float = 0.5,
     min_speech_duration_sec: float = 0.2,
     min_silence_duration_sec: float = 0.5,
     speech_pad_sec: float = 0.05,
@@ -5536,7 +6747,7 @@ def align_subtitles_with_whisperx(project_id: str, audio_path: str, transcript: 
     if not audio_file.exists():
         raise HTTPException(status_code=404, detail="音声ファイルが存在しません")
 
-    segments = transcript.get("segments") or []
+    segments = copy.deepcopy(transcript.get("segments") or [])
     if not segments:
         raise HTTPException(status_code=400, detail="align対象の字幕がありません")
 
@@ -5544,8 +6755,39 @@ def align_subtitles_with_whisperx(project_id: str, audio_path: str, transcript: 
     device = "cpu"
     model_a, metadata = load_whisperx_align_model(language, device)
     audio = whisperx.load_audio(str(audio_file))
+    audio_duration_sec = float(len(audio)) / 16000.0
+    input_end_sec = max((float(item.get("end", 0.0) or 0.0) for item in segments), default=0.0)
+    if input_end_sec > audio_duration_sec + 1.0:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Whisper字幕時刻が解析音声長を超えています: "
+                f"subtitle_end={input_end_sec:.3f}, audio_duration={audio_duration_sec:.3f}"
+            ),
+        )
     aligned = whisperx.align(segments, model_a, metadata, audio, device, return_char_alignments=False)
     aligned_segments = aligned.get("segments") or []
+    for source_segment, aligned_segment in zip(segments, aligned_segments):
+        source_start = float(source_segment.get("start", 0.0) or 0.0)
+        source_end = float(source_segment.get("end", source_start) or source_start)
+        aligned_start = float(aligned_segment.get("start", source_start) or source_start)
+        aligned_end = float(aligned_segment.get("end", source_end) or source_end)
+        if (
+            not math.isfinite(aligned_start)
+            or not math.isfinite(aligned_end)
+            or aligned_start < source_start - 0.5
+            or aligned_end > source_end + 0.5
+            or aligned_end > audio_duration_sec + 0.5
+        ):
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "WhisperXの補正時刻が元区間または音声長を超えたため採用しません: "
+                    f"source={source_start:.3f}-{source_end:.3f}, "
+                    f"aligned={aligned_start:.3f}-{aligned_end:.3f}, "
+                    f"audio_duration={audio_duration_sec:.3f}"
+                ),
+            )
     aligned_subtitles = normalize_subtitle_durations(
         subtitles_from_whisper({"transcription": aligned_segments, "segments": aligned_segments})
     )
@@ -5779,6 +7021,27 @@ def resolve_whisper_cpp_vad_model() -> Path:
     raise HTTPException(status_code=404, detail=f"whisper.cpp VADモデルが見つかりません: {WHISPER_CPP_VAD_MODEL.name}。利用可能: {available}")
 
 
+@lru_cache(maxsize=1)
+def whisper_cpp_runtime_version() -> str:
+    if not WHISPER_CPP_EXE.exists():
+        return "missing"
+    try:
+        proc = subprocess.run(
+            [str(WHISPER_CPP_EXE), "--version"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+        match = re.search(r"whisper\.cpp version:\s*([^\s]+)", f"{proc.stdout}\n{proc.stderr}")
+        return match.group(1) if match else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def transcribe_with_whisper_cpp(project_id: str, audio_path: str, language: str, model: str, compute_profile: str = "auto") -> dict:
     base = require_project(project_id)
     if not WHISPER_CPP_EXE.exists():
@@ -5798,16 +7061,9 @@ def transcribe_with_whisper_cpp(project_id: str, audio_path: str, language: str,
             language or "ja",
             "-sow",
             "-ojf",
-            "-nf",
             "-mc",
             "0",
-            "-et",
-            "2.80",
             "-nfa",
-            "-lpt",
-            "-1.00",
-            "-nth",
-            "0.35",
             "-of",
             path_for_cli(output_base),
         ]
@@ -5837,6 +7093,7 @@ def transcribe_with_whisper_cpp(project_id: str, audio_path: str, language: str,
     return {
         "language": raw.get("result", {}).get("language", language),
         "engine": "whisper.cpp",
+        "runtime_version": whisper_cpp_runtime_version(),
         "model": str(model_path),
         "device": device,
         "gpu_used": device == "vulkan",
@@ -5852,7 +7109,7 @@ def transcribe_with_whisper_cpp_vad(
     language: str,
     model: str,
     compute_profile: str = "auto",
-    vad_threshold: float = 0.25,
+    vad_threshold: float = 0.5,
     vad_min_speech_duration_ms: int = 100,
     vad_min_silence_duration_ms: int = 80,
     vad_speech_pad_ms: int = 50,
@@ -5876,16 +7133,9 @@ def transcribe_with_whisper_cpp_vad(
             language or "ja",
             "-sow",
             "-ojf",
-            "-nf",
             "-mc",
             "0",
-            "-et",
-            "2.80",
             "-nfa",
-            "-lpt",
-            "-1.00",
-            "-nth",
-            "0.35",
             "--vad",
             "-vm",
             path_for_cli(vad_model_path),
@@ -5895,6 +7145,8 @@ def transcribe_with_whisper_cpp_vad(
             str(int(vad_min_speech_duration_ms)),
             "-vsd",
             str(int(vad_min_silence_duration_ms)),
+            "-vmsd",
+            "30",
             "-vp",
             str(int(vad_speech_pad_ms)),
             "-of",
@@ -5913,17 +7165,80 @@ def transcribe_with_whisper_cpp_vad(
         raise HTTPException(status_code=500, detail="whisper.cpp VADのJSON出力が見つかりません")
     raw = json.loads(json_path.read_bytes().decode("utf-8", errors="replace"))
     device = infer_whisper_cpp_device(proc.stderr)
-    transcription = []
-    for item in raw.get("transcription", []):
+    transcription = normalize_whisper_cpp_vad_transcription(raw.get("transcription", []))
+    segments: list[dict] = []
+    for item in transcription:
+        offsets = item.get("offsets", {})
+        tokens = item.get("tokens") or []
+        token_starts = [float(token.get("offsets", {}).get("from", 0)) / 1000.0 for token in tokens if not str(token.get("text", "")).startswith("[_")]
+        token_ends = [float(token.get("offsets", {}).get("to", 0)) / 1000.0 for token in tokens if not str(token.get("text", "")).startswith("[_")]
+        start = min(token_starts) if token_starts else float(offsets.get("from", 0)) / 1000.0
+        end = max(token_ends) if token_ends else float(offsets.get("to", 0)) / 1000.0
+        segments.append({"start": start, "end": end, "text": str(item.get("text", "")).strip()})
+    timeline_max_end_sec = max((float(item.get("end", 0.0)) for item in segments), default=0.0)
+    audit_project_detail_event(
+        project_id,
+        "transcribe.whisper_cpp_vad_timeline",
+        stream="processing",
+        context={
+            "mapping": "source_segment_anchored_v2",
+            "segment_count": len(segments),
+            "timeline_max_end_sec": round(timeline_max_end_sec, 3),
+        },
+    )
+    return {
+        "language": raw.get("result", {}).get("language", language),
+        "engine": "whisper.cpp-vad",
+        "runtime_version": whisper_cpp_runtime_version(),
+        "model": str(model_path),
+        "vad_model": str(vad_model_path),
+        "device": device,
+        "gpu_used": device == "vulkan",
+        "vad_threshold": float(vad_threshold),
+        "vad_min_speech_duration_ms": int(vad_min_speech_duration_ms),
+        "vad_min_silence_duration_ms": int(vad_min_silence_duration_ms),
+        "vad_speech_pad_ms": int(vad_speech_pad_ms),
+        "vad_token_timebase": "source_segment_anchored_v2",
+        "timeline_max_end_sec": round(timeline_max_end_sec, 3),
+        "transcription": transcription,
+        "segments": segments,
+        "raw": raw,
+    }
+
+
+def normalize_whisper_cpp_vad_transcription(raw_transcription: list[dict]) -> list[dict]:
+    """Map VAD-compressed token offsets back into each source-audio segment.
+
+    whisper.cpp reports each segment's offsets on the original audio timeline,
+    while token offsets are on the concatenated VAD speech timeline.  Adding
+    both values accumulates removed silence and creates progressive drift.
+    """
+    transcription: list[dict] = []
+    for item in raw_transcription or []:
         adjusted = dict(item)
-        base_offset_ms = int(float(adjusted.get("offsets", {}).get("from", 0) or 0))
+        item_offsets = dict(adjusted.get("offsets", {}))
+        item_start_ms = int(float(item_offsets.get("from", 0) or 0))
+        item_end_ms = max(item_start_ms, int(float(item_offsets.get("to", item_start_ms) or item_start_ms)))
+        raw_tokens = adjusted.get("tokens") or []
+        content_tokens = [token for token in raw_tokens if not str(token.get("text", "")).startswith("[_")]
+        anchor_candidates = [
+            int(float(token.get("offsets", {}).get("from", 0) or 0))
+            for token in content_tokens
+            if token.get("offsets", {}).get("from") is not None
+        ]
+        compressed_anchor_ms = min(anchor_candidates) if anchor_candidates else 0
         tokens = []
-        for token in adjusted.get("tokens") or []:
+        for token in raw_tokens:
             token_offsets = dict(token.get("offsets", {}))
             if "from" in token_offsets:
-                token_offsets["from"] = int(float(token_offsets.get("from", 0) or 0) + base_offset_ms)
+                relative_from = int(float(token_offsets.get("from", 0) or 0)) - compressed_anchor_ms
+                token_offsets["from"] = max(item_start_ms, min(item_end_ms, item_start_ms + relative_from))
             if "to" in token_offsets:
-                token_offsets["to"] = int(float(token_offsets.get("to", 0) or 0) + base_offset_ms)
+                relative_to = int(float(token_offsets.get("to", 0) or 0)) - compressed_anchor_ms
+                token_offsets["to"] = max(
+                    int(token_offsets.get("from", item_start_ms)),
+                    min(item_end_ms, item_start_ms + relative_to),
+                )
             token = dict(token)
             token["offsets"] = token_offsets
             timestamps = dict(token.get("timestamps", {}))
@@ -5935,37 +7250,30 @@ def transcribe_with_whisper_cpp_vad(
             tokens.append(token)
         adjusted["tokens"] = tokens
         transcription.append(adjusted)
-    segments: list[dict] = []
-    for item in transcription:
-        offsets = item.get("offsets", {})
-        tokens = item.get("tokens") or []
-        token_starts = [float(token.get("offsets", {}).get("from", 0)) / 1000.0 for token in tokens if not str(token.get("text", "")).startswith("[_")]
-        token_ends = [float(token.get("offsets", {}).get("to", 0)) / 1000.0 for token in tokens if not str(token.get("text", "")).startswith("[_")]
-        start = min(token_starts) if token_starts else float(offsets.get("from", 0)) / 1000.0
-        end = max(token_ends) if token_ends else float(offsets.get("to", 0)) / 1000.0
-        segments.append({"start": start, "end": end, "text": str(item.get("text", "")).strip()})
-    return {
-        "language": raw.get("result", {}).get("language", language),
-        "engine": "whisper.cpp-vad",
-        "model": str(model_path),
-        "vad_model": str(vad_model_path),
-        "device": device,
-        "gpu_used": device == "vulkan",
-        "vad_threshold": float(vad_threshold),
-        "vad_min_speech_duration_ms": int(vad_min_speech_duration_ms),
-        "vad_min_silence_duration_ms": int(vad_min_silence_duration_ms),
-        "vad_speech_pad_ms": int(vad_speech_pad_ms),
-        "transcription": transcription,
-        "segments": segments,
-        "raw": raw,
-    }
+    return transcription
 
 
-def _render_plan_media(project_id: str, plan: dict, preview: bool = False, burn_subtitles: bool = False, persist_final_plan: bool = False, output_profile: str | None = None) -> dict:
+def _render_plan_media(
+    project_id: str,
+    plan: dict,
+    preview: bool = False,
+    burn_subtitles: bool = False,
+    persist_final_plan: bool = False,
+    output_profile: str | None = None,
+    subtitle_mode: str = "external",
+    subtitle_format: str = "srt",
+) -> dict:
     ensure_tool("ffmpeg")
     base = require_project(project_id)
     settings = plan.get("settings", {})
     export_profile = resolve_export_profile(project_id, output_profile)
+    subtitle_mode, subtitle_format = normalize_subtitle_export_options(
+        subtitle_mode,
+        subtitle_format,
+        burn_subtitles=burn_subtitles,
+    )
+    if preview:
+        subtitle_mode, subtitle_format = "external", "srt"
     transcript_path = base / "transcript" / "transcript.json"
     transcript = json.loads(transcript_path.read_text(encoding="utf-8")) if transcript_path.exists() else {}
     segments = [s for s in plan.get("segments", []) if s.get("enabled", True)]
@@ -5975,6 +7283,13 @@ def _render_plan_media(project_id: str, plan: dict, preview: bool = False, burn_
     segment_dir.mkdir(parents=True, exist_ok=True)
     segment_files: list[Path] = []
     source = project_source_video(project_id)
+    project_ui_state = project_info(project_id).get("ui_state") or {}
+    selected_audio_stream_index = project_ui_state.get("audio_stream_index")
+    if selected_audio_stream_index is not None:
+        try:
+            selected_audio_stream_index = int(selected_audio_stream_index)
+        except (TypeError, ValueError):
+            selected_audio_stream_index = None
     output_audio_mode = str(plan.get("settings", {}).get("output_audio_mode", transcript.get("output_audio_mode", "original"))).strip().lower()
     isolated_audio_source = None
     if output_audio_mode == "isolated_voice":
@@ -6017,6 +7332,8 @@ def _render_plan_media(project_id: str, plan: dict, preview: bool = False, burn_
                 args += ["-vf", "scale='min(1280,iw)':-2", *video_quality_args]
             else:
                 args += ["-c:v", video_codec, *video_quality_args]
+            if selected_audio_stream_index is not None:
+                args += ["-map", "0:v:0", "-map", f"0:{selected_audio_stream_index}"]
             args += ["-c:a", audio_codec, *container_args, str(out)]
         else:
             audio_start = float(segment.get("range_relative_start_sec", 0.0))
@@ -6058,14 +7375,35 @@ def _render_plan_media(project_id: str, plan: dict, preview: bool = False, burn_
     )
     srt_out = output_dir / ("preview.srt" if preview else "final.srt")
     write_srt(plan.get("subtitles", []), srt_out)
-    if not preview:
-        decoration_path = base / "decoration" / "decoration_project.json"
-        should_burn_decoration = bool(burn_subtitles)
-        if should_burn_decoration:
+    ass_out: Path | None = None
+    decoration_payload: dict | None = None
+    output_info: dict | None = None
+    canvas_size: tuple[int, int] | None = None
+    if not preview and subtitle_format in {"plain_ass", "ass"}:
+        output_info = probe_video(str(video_out))
+        canvas_size = (int(output_info.get("width") or 1280), int(output_info.get("height") or 720))
+        if subtitle_format == "ass":
             decoration_payload = decoration_payload_for_plan(project_id, plan, ass_source_srt=srt_out)
-            output_info = probe_video(str(video_out))
-            canvas_size = (int(output_info.get("width") or 1280), int(output_info.get("height") or 720))
-            ass_path = build_decoration_ass(project_id, decoration_payload, base / "decoration" / "final_burn.ass", include_caption_text=True, canvas_size=canvas_size)
+            ass_out = build_decoration_ass(
+                project_id,
+                decoration_payload,
+                output_dir / "final.ass",
+                include_caption_text=True,
+                canvas_size=canvas_size,
+            )
+        else:
+            ass_out = build_plain_ass(
+                project_id,
+                plan.get("subtitles", []),
+                output_dir / "final.ass",
+                canvas_size=canvas_size,
+            )
+    if not preview:
+        should_burn_decoration = subtitle_mode == "burn" and subtitle_format == "ass"
+        if should_burn_decoration:
+            if decoration_payload is None or output_info is None or canvas_size is None or ass_out is None:
+                raise HTTPException(status_code=500, detail="装飾ASSの生成に失敗しました")
+            ass_path = ass_out
             screen_filter_expr, applied_effects = build_screen_effect_filter_chain(plan, decoration_payload)
             screen_overlays = generate_screen_effect_overlays(project_id, plan, decoration_payload, canvas_size=canvas_size)
             frame_overlays = generate_decoration_overlays(project_id, decoration_payload, canvas_size=canvas_size)
@@ -6090,7 +7428,7 @@ def _render_plan_media(project_id: str, plan: dict, preview: bool = False, burn_
                 except Exception:
                     return str(path)
 
-            subtitles_filter = "subtitles=filename='final_burn.ass'"
+            subtitles_filter = f"subtitles=filename='{ass_path.name}'"
             burn_output = video_out.with_name(f"{video_out.stem}_decorated{video_out.suffix}")
             burn_args = [
                 "ffmpeg",
@@ -6150,19 +7488,78 @@ def _render_plan_media(project_id: str, plan: dict, preview: bool = False, burn_
             burn_output.replace(video_out)
             if applied_effects:
                 audit_project_event(project_id, "render_from_plan.screen_effects_burned", context={"effects": applied_effects, "output_path": str(video_out)})
+        elif subtitle_mode == "burn":
+            burn_output = video_out.with_name(f"{video_out.stem}_subtitled{video_out.suffix}")
+            burn_subtitle_path = ass_out if subtitle_format == "plain_ass" and ass_out is not None else srt_out
+            run_command(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(video_out),
+                    "-vf",
+                    ffmpeg_subtitles_filter(burn_subtitle_path),
+                    "-c:v",
+                    video_codec,
+                    *video_quality_args,
+                    "-c:a",
+                    "copy",
+                    *( ["-movflags", "+faststart"] if export_profile["container"] == "mp4" else [] ),
+                    str(burn_output),
+                ],
+                base / "temp" / "logs" / "final_srt_burn.log",
+            )
+            burn_output.replace(video_out)
+        subtitle_track_codec = None
+        if subtitle_mode == "embed":
+            subtitle_source = ass_out if subtitle_format in {"plain_ass", "ass"} else srt_out
+            if subtitle_source is None or not subtitle_source.exists():
+                raise HTTPException(status_code=500, detail="埋め込み対象の字幕ファイルが見つかりません")
+            video_out, subtitle_track_codec = mux_subtitle_track(
+                project_id,
+                video_out,
+                subtitle_source,
+                "ass" if subtitle_format in {"plain_ass", "ass"} else "srt",
+            )
     if not preview:
         normalized_plan = normalize_edit_plan_source_video(project_id, plan)
         if persist_final_plan:
             atomic_write_json(output_dir / "edit_plan_final.json", normalized_plan)
     result_key = "preview_video_path" if preview else "video_path"
-    audit_project_event(project_id, "render_from_plan", context={"preview": preview, "burn_subtitles": burn_subtitles, "segment_count": len(segments), "output_audio_mode": output_audio_mode, "audio_mode_resolved": "isolated_voice" if isolated_audio_source else "original", "video_codec": video_codec, "audio_codec": audio_codec, "output_profile": export_profile["profile"], "container": export_profile["container"]})
-    return {result_key: str(video_out), "srt_path": str(srt_out), "video_url": f"/api/projects/{project_id}/media/{'preview' if preview else 'output'}/{video_out.name}"}
+    audit_project_event(project_id, "render_from_plan", context={"preview": preview, "burn_subtitles": subtitle_mode == "burn", "subtitle_mode": subtitle_mode, "subtitle_format": subtitle_format, "subtitle_track_codec": subtitle_track_codec if not preview else None, "segment_count": len(segments), "output_audio_mode": output_audio_mode, "audio_mode_resolved": "isolated_voice" if isolated_audio_source else "original", "audio_stream_index": selected_audio_stream_index, "video_codec": video_codec, "audio_codec": audio_codec, "output_profile": export_profile["profile"], "container": video_out.suffix.lower().lstrip(".")})
+    subtitle_path = ass_out if subtitle_format in {"plain_ass", "ass"} and ass_out is not None else srt_out
+    return {
+        result_key: str(video_out),
+        "srt_path": str(srt_out),
+        "ass_path": str(ass_out) if ass_out is not None else None,
+        "subtitle_path": str(subtitle_path),
+        "subtitle_mode": subtitle_mode,
+        "subtitle_format": subtitle_format,
+        "subtitle_track_codec": subtitle_track_codec if not preview else None,
+        "video_url": f"/api/projects/{project_id}/media/{'preview' if preview else 'output'}/{video_out.name}",
+    }
 
 
-def render_from_plan(project_id: str, preview: bool = False, burn_subtitles: bool = False, output_profile: str | None = None) -> dict:
+def render_from_plan(
+    project_id: str,
+    preview: bool = False,
+    burn_subtitles: bool = False,
+    output_profile: str | None = None,
+    subtitle_mode: str = "external",
+    subtitle_format: str = "srt",
+) -> dict:
     base = require_project(project_id)
     plan = ensure_project_edit_plan(project_id)
-    return _render_plan_media(project_id, plan, preview=preview, burn_subtitles=burn_subtitles, persist_final_plan=not preview, output_profile=output_profile)
+    return _render_plan_media(
+        project_id,
+        plan,
+        preview=preview,
+        burn_subtitles=burn_subtitles,
+        persist_final_plan=not preview,
+        output_profile=output_profile,
+        subtitle_mode=subtitle_mode,
+        subtitle_format=subtitle_format,
+    )
 
 
 def export_cut_video_with_decoration_ass(project_id: str, output_profile: str | None = None) -> dict:

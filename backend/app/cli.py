@@ -43,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--start", type=float, required=True)
     p.add_argument("--end", type=float, required=True)
     p.add_argument("--compute-profile", default="auto", choices=["auto", "cpu", "gpu"])
+    p.add_argument("--audio-stream-index", type=int)
 
     p = sub.add_parser("transcribe")
     p.add_argument("--project-id", required=True)
@@ -80,6 +81,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("export")
     p.add_argument("--project-id", required=True)
     p.add_argument("--burn-subtitles", action="store_true")
+    p.add_argument("--subtitle-mode", choices=["external", "burn", "embed"], default="external")
+    p.add_argument("--subtitle-format", choices=["srt", "plain_ass", "ass"], default="srt")
     p.add_argument("--output-profile")
 
     p = sub.add_parser("cleanup")
@@ -98,6 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--language", default="ja")
     p.add_argument("--model", default="large-v3")
     p.add_argument("--compute-profile", default="auto", choices=["auto", "cpu", "gpu"])
+    p.add_argument("--audio-stream-index", type=int)
     p.add_argument("--engine", default="whisper.cpp")
     p.add_argument("--silence-threshold-db", type=float, default=-35.0)
     p.add_argument("--detection-mode", default="silencedetect")
@@ -110,6 +114,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-auto-cut", dest="auto_cut", action="store_false")
     p.add_argument("--settings-json")
     p.add_argument("--burn-subtitles", action="store_true")
+    p.add_argument("--subtitle-mode", choices=["external", "burn", "embed"], default="external")
+    p.add_argument("--subtitle-format", choices=["srt", "plain_ass", "ass"], default="srt")
     p.add_argument("--output-profile")
     p.add_argument("--auto-cleanup", action="store_true")
     p.add_argument("--report")
@@ -128,7 +134,7 @@ def cmd_new_project(args: argparse.Namespace) -> None:
 
 
 def cmd_extract_audio(args: argparse.Namespace) -> None:
-    result = extract_audio(args.project_id, args.video_path, args.start, args.end, args.compute_profile)
+    result = extract_audio(args.project_id, args.video_path, args.start, args.end, args.compute_profile, args.audio_stream_index)
     audit_project_event(args.project_id, "cli.extract_audio")
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -209,8 +215,25 @@ def cmd_preview(args: argparse.Namespace) -> None:
 
 
 def cmd_export(args: argparse.Namespace) -> None:
-    result = render_from_plan(args.project_id, preview=False, burn_subtitles=args.burn_subtitles, output_profile=args.output_profile)
-    audit_project_event(args.project_id, "cli.export", context={"burn_subtitles": args.burn_subtitles, "output_profile": args.output_profile})
+    subtitle_mode = "burn" if args.burn_subtitles else args.subtitle_mode
+    result = render_from_plan(
+        args.project_id,
+        preview=False,
+        burn_subtitles=args.burn_subtitles,
+        subtitle_mode=subtitle_mode,
+        subtitle_format=args.subtitle_format,
+        output_profile=args.output_profile,
+    )
+    audit_project_event(
+        args.project_id,
+        "cli.export",
+        context={
+            "burn_subtitles": args.burn_subtitles,
+            "subtitle_mode": subtitle_mode,
+            "subtitle_format": args.subtitle_format,
+            "output_profile": args.output_profile,
+        },
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -260,6 +283,9 @@ def cmd_run_pipeline(args: argparse.Namespace) -> None:
     language = config.get("language") or args.language
     model = config.get("model") or args.model
     compute_profile = config.get("compute_profile") or args.compute_profile
+    audio_stream_index = config.get("audio_stream_index", args.audio_stream_index)
+    if audio_stream_index is not None:
+        audio_stream_index = int(audio_stream_index)
     engine = config.get("engine") or args.engine
     threshold_db = float(config.get("threshold_db", args.threshold_db))
     silence_threshold_db = float(config.get("silence_threshold_db", args.silence_threshold_db))
@@ -272,18 +298,25 @@ def cmd_run_pipeline(args: argparse.Namespace) -> None:
     auto_cleanup = bool(config.get("auto_cleanup", args.auto_cleanup))
     settings_json = config.get("settings_json") or args.settings_json
     burn_subtitles = bool(config.get("burn_subtitles", args.burn_subtitles))
+    subtitle_mode = str(config.get("subtitle_mode") or args.subtitle_mode)
+    subtitle_format = str(config.get("subtitle_format") or args.subtitle_format)
+    if burn_subtitles:
+        subtitle_mode = "burn"
     output_profile = config.get("output_profile") or args.output_profile
     subtitles_override = config.get("subtitles")
 
     try:
         project = create_project_from_local_file(Path(video), name)
         project_id = project["project_id"]
-        if output_profile:
+        if output_profile or audio_stream_index is not None:
             current_ui = dict(project.get("ui_state") or {})
-            current_ui["output_profile"] = output_profile
+            if output_profile:
+                current_ui["output_profile"] = output_profile
+            if audio_stream_index is not None:
+                current_ui["audio_stream_index"] = audio_stream_index
             update_project_info(project_id, {"ui_state": current_ui})
         audit_project_event(project_id, "cli.run_pipeline.start")
-        audio = extract_audio(project_id, project["source_video"], start, end, compute_profile)
+        audio = extract_audio(project_id, project["source_video"], start, end, compute_profile, audio_stream_index)
         if subtitles_override is not None:
             transcript = {"engine": "manual", "subtitles": subtitles_override}
         else:
@@ -325,7 +358,14 @@ def cmd_run_pipeline(args: argparse.Namespace) -> None:
         atomic_write_json(plan_path, plan, backup=True)
         write_srt(plan.get("subtitles", []), resolve_project_path(project_id, "subtitles", "edited.srt"))
         preview = render_from_plan(project_id, preview=True, output_profile=output_profile)
-        final = render_from_plan(project_id, preview=False, burn_subtitles=burn_subtitles, output_profile=output_profile)
+        final = render_from_plan(
+            project_id,
+            preview=False,
+            burn_subtitles=burn_subtitles,
+            subtitle_mode=subtitle_mode,
+            subtitle_format=subtitle_format,
+            output_profile=output_profile,
+        )
         if auto_cleanup:
             cleanup = cleanup_project_artifacts(
                 project_id,

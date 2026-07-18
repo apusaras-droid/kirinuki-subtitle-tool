@@ -36,6 +36,7 @@ function Get-LocalBuildId {
     'backend/app/edit_plan.py',
     'backend/app/srt.py',
     'backend/app/cli.py',
+    'backend/app/gemini_service.py',
     'frontend/app.js',
     'frontend/index.html',
     'frontend/styles.css'

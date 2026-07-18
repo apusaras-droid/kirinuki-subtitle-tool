@@ -74,7 +74,9 @@
 | 仮出力を作成 | `preview` | `preview/preview_low.mp4` |
 | 手動カットを仮出力 | `preview` へ manual cut を反映 | `edit_plan.json` |
 | 最終出力 | `export` | `output/final.*` |
-| 字幕を焼き込む | `export --burn-subtitles` | `output/final.*` |
+| 通常ASS / 装飾ASSを別ファイル | `export --subtitle-mode external --subtitle-format plain_ass/ass` | `output/final.ass` |
+| 通常ASS / 装飾ASSを焼き込む | `export --subtitle-mode burn --subtitle-format plain_ass/ass` | `output/final.*` |
+| ASS字幕トラックを埋め込む | `export --subtitle-mode embed --subtitle-format plain_ass/ass` | MKV (`ass`) |
 
 ## 8. 迷ったとき
 

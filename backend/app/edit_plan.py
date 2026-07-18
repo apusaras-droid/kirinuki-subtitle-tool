@@ -249,13 +249,13 @@ def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_
         item = deepcopy(sub)
         rel_start = _subtitle_relative_time(
             item,
-            ("range_relative_start_sec", "corrected_start_sec", "start_sec", "output_start_sec", "source_start_sec", "original_start_sec"),
+            ("selected_start_sec", "range_relative_start_sec", "corrected_start_sec", "start_sec", "output_start_sec", "source_start_sec", "original_start_sec"),
             source_range_start,
             source_range_end,
         )
         rel_end = _subtitle_relative_time(
             item,
-            ("range_relative_end_sec", "corrected_end_sec", "end_sec", "output_end_sec", "source_end_sec", "original_end_sec"),
+            ("selected_end_sec", "range_relative_end_sec", "corrected_end_sec", "end_sec", "output_end_sec", "source_end_sec", "original_end_sec"),
             source_range_start,
             source_range_end,
         )
@@ -270,8 +270,10 @@ def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_
         item["original_end_sec"] = round(source_range_start + rel_end, 3)
         item["original_start"] = item["original_start_sec"]
         item["original_end"] = item["original_end_sec"]
-        item["whisper_start_sec"] = float(item.get("whisper_start_sec", item["original_start_sec"]))
-        item["whisper_end_sec"] = float(item.get("whisper_end_sec", item["original_end_sec"]))
+        item["whisper_start_sec"] = float(item.get("whisper_start_sec", rel_start))
+        item["whisper_end_sec"] = float(item.get("whisper_end_sec", rel_end))
+        item["selected_start_sec"] = rel_start
+        item["selected_end_sec"] = rel_end
         pieces: list[dict] = []
         for seg_idx, seg in enumerate(segments):
             if not seg.get("enabled", True):

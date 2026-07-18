@@ -93,9 +93,13 @@ python -m backend save-subtitles --project-id "project_xxx" --subtitles-json "su
 
 ```powershell
 python -m backend preview --project-id "project_xxx"
-python -m backend export --project-id "project_xxx" --burn-subtitles
+python -m backend export --project-id "project_xxx" --subtitle-mode external --subtitle-format plain_ass
+python -m backend export --project-id "project_xxx" --subtitle-mode burn --subtitle-format ass
+python -m backend export --project-id "project_xxx" --subtitle-mode embed --subtitle-format plain_ass
 python -m backend cleanup --project-id "project_xxx" --keep-preview
 ```
+
+`--subtitle-mode` は `external`（別ファイル）、`burn`（映像へ焼き込み）、`embed`（切替可能な字幕トラック）の3種類です。`--subtitle-format` は `plain_ass`（通常ASS）、`ass`（装飾ASS）、互換用の `srt` を指定できます。ASS埋め込みはスタイル保持のためMKVのASSトラックとして出力されます。通常ASSは詳細設定と字幕個別ASS設定だけを使い、デコレーション画面の設定を含みません。
 
 ## 例9: 一括実行
 
@@ -104,6 +108,8 @@ python -m backend run-pipeline --config "docs/cli-run-pipeline.sample.json" --re
 ```
 
 `run-pipeline` の設定は JSON ファイルで渡すのが推奨です。
+
+一括実行でも `subtitle_mode` と `subtitle_format` を同じ値で指定できます。
 
 主なキー:
 

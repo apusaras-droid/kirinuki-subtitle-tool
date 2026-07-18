@@ -8,7 +8,7 @@
   </head>
   <body>
     <header class="app-header">
-        <div>
+        <div class="app-brand">
           <h1>切り抜き字幕作成ツール</h1>
           <p id="projectLabel">プロジェクト未作成</p>
           <div id="taskProgress" class="task-progress idle">
@@ -16,41 +16,88 @@
             <span id="taskProgressTime">経過 00:00 / 残り --:--</span>
           </div>
         </div>
-        <div class="header-actions">
-          <button id="editorPageBtn" type="button" class="active">編集画面</button>
-          <button id="subtitlePageBtn" type="button">字幕編集</button>
+        <div class="header-actions header-utilities">
+          <button id="newProjectBtn" type="button">新規プロジェクト</button>
           <button id="projectListPageBtn" type="button">プロジェクト一覧</button>
-          <button id="settingsPageBtn" type="button">設定画面</button>
-          <button id="decorationPageBtn" type="button">デコレーション画面</button>
-          <button id="previewCheckPageBtn" type="button">プレビュー点検</button>
-          <button id="saveProjectBtn" type="button">プロジェクト保存</button>
-          <button id="overwriteProjectBtn" type="button">上書き保存</button>
-          <label class="export-mode-label">最終出力
-            <select id="finalOutputMode">
-              <option value="video_srt">カット動画 + SRT</option>
-              <option value="video_ass">カット動画 + 装飾ASS</option>
-              <option value="decorated_burned">装飾を動画に焼き込み</option>
-            </select>
-          </label>
-          <label class="checkbox-label export-toggle hidden-panel"><input id="burnSubtitles" type="checkbox" />字幕を焼き込む</label>
-          <button id="saveSubtitlesBtn" type="button" disabled>字幕を保存</button>
-          <button id="manualPreviewBtn" type="button" disabled>手動カットを仮出力</button>
-          <button id="previewRenderBtn" type="button" disabled>仮出力を作成</button>
-          <button id="exportBtn" type="button" class="primary" disabled>最終出力</button>
+          <button id="settingsPageBtn" type="button">詳細設定</button>
+          <button id="saveProjectBtn" type="button" disabled>作業を保存</button>
+          <button id="overwriteProjectBtn" type="button" disabled>上書き保存</button>
+        </div>
+        <nav id="workflowNav" class="workflow-nav" aria-label="作業工程">
+          <button id="projectPageBtn" type="button" data-step-id="STEP_PROJECT">1 プロジェクト</button>
+          <button id="editorPageBtn" type="button" data-step-id="STEP_TRANSCRIBE">2 字幕作成方式</button>
+          <button id="aiSubtitlePageBtn" type="button" data-step-id="STEP_AI_SUBTITLE">3 Gemini AI編集（任意）</button>
+          <button id="cutPageBtn" type="button" data-step-id="STEP_CUT">4 カット編集</button>
+          <button id="subtitlePageBtn" type="button" data-step-id="STEP_SUBTITLE_EDIT">5 字幕編集</button>
+          <button id="decorationPageBtn" type="button" data-step-id="STEP_DECORATION">6 デコレーション</button>
+          <button id="previewCheckPageBtn" type="button" data-step-id="STEP_PREVIEW">7 プレビュー点検</button>
+          <button id="exportPageBtn" type="button" data-step-id="STEP_EXPORT">8 動画出力</button>
+        </nav>
+        <div class="workflow-summary" aria-live="polite">
+          <span id="workflowCurrent">現在: プロジェクト作成</span>
+          <span id="workflowNext">次の操作: 動画を選択</span>
+          <button id="workflowNextBtn" type="button" class="primary">次へ</button>
         </div>
     </header>
 
-    <main class="layout">
-      <section class="left-pane">
-        <div class="toolbar">
-          <label class="file-picker">
+    <audio id="selectedAudioTrackPreview" class="hidden-panel" preload="auto"></audio>
+
+    <section id="projectPage" class="project-page">
+      <div class="settings-page-header">
+        <div>
+          <h2>プロジェクト作成</h2>
+          <p>編集する動画を選ぶか、保存済みの作業を再開する。</p>
+        </div>
+        <button id="projectOpenListBtn" type="button">保存済みプロジェクトを開く</button>
+      </div>
+      <div class="project-create-body">
+        <section class="project-create-panel">
+          <label class="file-picker project-file-picker">
             <span>動画を選択</span>
             <input id="videoFile" type="file" accept=".mp4,.mkv,.mov,.webm,video/*" />
           </label>
-          <input id="projectName" type="text" placeholder="プロジェクト名" />
-          <button id="createProjectBtn" type="button">読み込み</button>
-        </div>
+          <label>プロジェクト名
+            <input id="projectName" type="text" placeholder="動画名と日付から自動作成" />
+          </label>
+          <button id="createProjectBtn" type="button" class="primary">プロジェクトを作成</button>
+          <p class="settings-note">動画を選択すると、元動画を変更せずに作業用プロジェクトを作成します。</p>
+        </section>
+      </div>
+    </section>
 
+    <main class="layout hidden-panel">
+      <section class="workflow-page-intro local-transcribe-intro">
+        <div>
+          <h2 id="transcriptionModeHeading">字幕作成</h2>
+          <p id="transcriptionModeDescription">PC内のWhisperで文字起こしし、VADまたは無音検出でカット案を作ります。音声を外部サービスへ送信しません。</p>
+        </div>
+        <div class="transcription-mode-control">
+          <label>字幕作成方式
+            <select id="transcriptionMode">
+              <option value="local">ローカルWhisperのみ</option>
+              <option value="gemini">Geminiで直接文字起こし</option>
+              <option value="hybrid" selected>Whisper + Gemini校正</option>
+            </select>
+          </label>
+          <label>使用音声トラック
+            <select id="audioTrackSelect" disabled>
+              <option value="">動画を読み込むと選択できます</option>
+            </select>
+            <small id="audioTrackDescription" class="preset-description">文字起こし・VAD・カット後の出力音声に使用します。</small>
+          </label>
+          <label>ローカル字幕プリセット
+            <select id="localTranscriptionPreset">
+              <option value="fast">最速</option>
+              <option value="normal" selected>普通</option>
+              <option value="bgm_precision">精度・BGM分離</option>
+              <option value="maximum">最高・精度最優先</option>
+            </select>
+            <small id="localTranscriptionPresetDescription" class="preset-description">smallモデルとVAD時刻補正を使う標準設定です。</small>
+          </label>
+          <span id="transcriptionModeBadge" class="processing-badge local">ローカル + 外部AI</span>
+        </div>
+      </section>
+      <section class="left-pane">
         <div id="videoShellWrap" class="video-shell">
           <video id="video" controls playsinline></video>
           <div id="subtitleOverlay" class="subtitle-overlay"></div>
@@ -91,12 +138,25 @@
           <button id="renderedModeBtn" type="button">仮出力を確認</button>
         </div>
 
-        <div id="processWrap" class="process-grid">
-          <button id="probeBtn" type="button" disabled>動画情報取得</button>
-          <button id="extractBtn" type="button" disabled>音声を抽出</button>
-          <button id="transcribeBtn" type="button" disabled>文字起こしを実行</button>
-          <button id="silenceBtn" type="button" disabled>無音区間を検出</button>
-          <button id="planBtn" type="button" disabled>カット案を作成</button>
+        <div id="processWrap" class="process-panel">
+          <div class="primary-process-actions">
+            <button id="transcribeOnlyBtn" type="button" class="primary" disabled>字幕だけ作成</button>
+            <button id="previewGeneratedSubtitlesBtn" type="button" class="preview-subtitle-action" disabled>作成字幕を動画で確認</button>
+          </div>
+          <details class="process-details">
+            <summary>ローカル処理を個別に再実行</summary>
+            <div class="process-grid">
+              <button id="probeBtn" type="button" disabled>動画情報取得</button>
+              <button id="extractBtn" type="button" disabled>音声を抽出</button>
+              <button id="transcribeBtn" type="button" disabled>Whisper文字起こしを実行</button>
+              <button id="silenceBtn" type="button" disabled>無音区間を検出</button>
+            </div>
+          </details>
+        </div>
+
+        <div class="mode-row">
+          <button id="manualPreviewBtn" type="button" disabled>手動カットを仮出力</button>
+          <button id="previewRenderBtn" type="button" disabled>カット案を仮出力</button>
         </div>
 
         <div id="workspaceWrap" class="mode-row editor-mode-row">
@@ -141,7 +201,6 @@
             </div>
           </div>
         </section>
-        </section>
 
       <aside class="right-pane">
         <section class="info-panel">
@@ -170,6 +229,212 @@
       </aside>
     </main>
 
+    <section id="aiSubtitlePage" class="ai-subtitle-page hidden-panel">
+      <div class="settings-page-header">
+        <div>
+          <h2>Gemini AI編集（任意）</h2>
+          <p>字幕校正とカット提案を分けてGeminiへ指示し、それぞれの結果を確認して採用します。</p>
+        </div>
+        <div class="header-actions">
+          <button id="aiSubtitleBackBtn" type="button">字幕作成へ戻る</button>
+          <button id="aiSubtitleSkipBtn" type="button">Geminiを使わずカット編集へ</button>
+          <button id="aiSubtitleConfirmBtn" type="button" class="primary">選択中の提案を採用してカット編集へ</button>
+        </div>
+      </div>
+      <div class="ai-subtitle-body">
+        <section class="ai-knowledge-panel">
+          <details id="geminiKnowledgeDetails">
+            <summary><strong>キャラクター・用語DB</strong><span id="geminiKnowledgeCount">0件</span></summary>
+            <div class="gemini-knowledge-content">
+              <div class="gemini-knowledge-library">
+                <label>プロジェクトに紐付ける作品DB
+                  <select id="geminiKnowledgeDatabaseSelect">
+                    <option value="">プロジェクト専用DB</option>
+                  </select>
+                </label>
+                <div class="settings-actions">
+                  <button id="linkGeminiKnowledgeBtn" type="button">選択DBを紐付け</button>
+                  <button id="unlinkGeminiKnowledgeBtn" type="button">紐付けを解除</button>
+                </div>
+                <label>共通DB登録名<input id="geminiKnowledgeDatabaseName" type="text" placeholder="他プロジェクトで表示する名前" /></label>
+                <button id="registerGeminiKnowledgeBtn" type="button">現在DBを共通登録</button>
+              </div>
+              <div class="gemini-knowledge-search">
+                <label>作品名<input id="geminiKnowledgeWorkTitle" type="text" placeholder="作品の正式名称" /></label>
+                <label>検索時の追加条件<input id="geminiKnowledgeResearchInstructions" type="text" placeholder="アニメ版、特定シリーズ、公式情報優先など" /></label>
+              </div>
+              <div class="settings-actions">
+                <button id="researchGeminiKnowledgeBtn" type="button" class="primary">Web検索してDB作成</button>
+                <button id="addGeminiKnowledgeEntryBtn" type="button">項目を追加</button>
+                <button id="saveGeminiKnowledgeBtn" type="button">DBを保存</button>
+                <span id="geminiKnowledgeStatus">未作成</span>
+              </div>
+              <p class="settings-note">Google検索の結果は候補です。正式表記と出典を確認して保存してください。有効な項目はGemini校正時に自動参照されます。</p>
+              <div id="geminiKnowledgeList" class="gemini-knowledge-list"></div>
+              <details class="process-details">
+                <summary>Web検索の出典を表示</summary>
+                <div id="geminiKnowledgeSources" class="gemini-knowledge-sources">出典なし</div>
+              </details>
+            </div>
+          </details>
+        </section>
+        <section class="ai-control-panel ai-shared-control">
+          <div class="section-title"><h2>Gemini共通設定</h2><span id="geminiPageStatus">未確認</span></div>
+          <span class="processing-badge cloud">Googleへ音声を送信</span>
+          <label>モデル
+            <select id="geminiPageModel">
+              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite（軽量・推奨）</option>
+              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite（最軽量）</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash（標準）</option>
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash（高品質）</option>
+              <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+            </select>
+          </label>
+          <div class="settings-actions">
+            <button id="refreshGeminiModelsBtn" type="button">利用可能モデルを確認</button>
+            <span id="geminiModelAvailability">未確認</span>
+          </div>
+          <p class="settings-note">字幕校正とカット提案は個別に送信できます。片方を再実行しても、もう片方の提案は保持されます。</p>
+          <details class="process-details">
+            <summary>Gemini文字起こしを表示</summary>
+            <div id="geminiTranscript" class="ai-transcript">未生成</div>
+          </details>
+        </section>
+        <section class="ai-task-panel" data-gemini-task="subtitle">
+          <div class="section-title"><h2>1. 字幕校正</h2><span id="geminiSubtitleProposalCount">0件</span></div>
+          <p class="settings-note">音声と既存字幕を照合し、誤字修正、固有名詞、結合・分割、チャプターを提案します。</p>
+          <div class="gemini-prompt-template">
+            <label>字幕校正テンプレート
+              <select id="geminiInstructionTemplate">
+                <option value="character_names">キャラクター名・人物名を修正</option>
+                <option value="word_replacements">単語・固有名詞を置換</option>
+                <option value="notation">表記と記号を統一</option>
+                <option value="readability">誤字修正・読みやすさを改善</option>
+                <option value="segmenting">字幕の結合・分割を調整</option>
+                <option value="chapters">チャプターを提案</option>
+              </select>
+            </label>
+            <div class="settings-actions">
+              <button id="addGeminiInstructionTemplateBtn" type="button">指示文へ追加</button>
+              <button id="clearGeminiInstructionsBtn" type="button">指示文をクリア</button>
+            </div>
+          </div>
+          <label>字幕校正への指示文<textarea id="geminiInstructions" rows="10" placeholder="直したい人物名、用語、表記、字幕の分割方針などを指定してください。"></textarea></label>
+          <div class="settings-actions">
+            <button id="geminiAnalyzeBtn" type="button" class="primary">字幕校正を送信</button>
+            <button id="applyGeminiSubtitleBtn" type="button">選択した字幕提案を採用</button>
+          </div>
+          <div id="geminiSubtitleSummary" class="ai-summary">字幕提案はまだありません。</div>
+          <div id="geminiSubtitleProposalList" class="ai-proposal-list"></div>
+        </section>
+        <section class="ai-task-panel" data-gemini-task="cut">
+          <div class="section-title"><h2>2. AIカット提案</h2><span id="geminiCutProposalCount">0件</span></div>
+          <p class="settings-note">不要区間、残す区間、見どころを提案します。採用したremove区間はカット編集へ引き継がれます。</p>
+          <div class="gemini-prompt-template">
+            <label>カットテンプレート
+              <select id="geminiCutInstructionTemplate">
+                <option value="cuts">不要部分のカットを提案</option>
+                <option value="cut_strict">言い直し・重複だけを厳密に削除</option>
+                <option value="cut_tempo">テンポ優先で間を短くする</option>
+                <option value="cut_highlights">見どころと抽出候補を提案</option>
+              </select>
+            </label>
+            <div class="settings-actions">
+              <button id="addGeminiCutInstructionTemplateBtn" type="button">指示文へ追加</button>
+              <button id="clearGeminiCutInstructionsBtn" type="button">指示文をクリア</button>
+            </div>
+          </div>
+          <label>カットへの指示文<textarea id="geminiCutInstructions" rows="10" placeholder="削除したい内容、残したい間、抽出条件などを指定してください。"></textarea></label>
+          <div class="settings-actions">
+            <button id="geminiCutAnalyzeBtn" type="button" class="primary">カット提案を送信</button>
+            <button id="applyGeminiCutBtn" type="button">選択したカット提案を採用</button>
+          </div>
+          <div id="geminiCutSummary" class="ai-summary">カット提案はまだありません。</div>
+          <div id="geminiCutProposalList" class="ai-proposal-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="cutPage" class="cut-page hidden-panel">
+      <div class="settings-page-header">
+        <div>
+          <h2>カット編集</h2>
+          <p>不要区間を指定し、カット後の繋がりと字幕位置を確認する。</p>
+        </div>
+        <div class="header-actions">
+          <button id="cutPageBackBtn" type="button">Gemini AI編集へ戻る</button>
+          <button id="transcribePlanBtn" type="button" disabled>現在の字幕からカット案を作成</button>
+          <button id="cutConfirmBtn" type="button" class="primary">カットを確定して字幕編集へ</button>
+        </div>
+      </div>
+      <div class="cut-page-body">
+        <section class="cut-preview-panel">
+          <div class="section-title">
+            <h2>カット確認</h2>
+            <span id="cutCurrentTime">00:00:00.000</span>
+          </div>
+          <div class="mode-row">
+            <button id="cutSourceModeBtn" type="button" class="active">元動画</button>
+            <button id="cutPlannedModeBtn" type="button">カット後プレビュー（区間ジャンプ）</button>
+          </div>
+          <div class="video-shell cut-preview-shell">
+            <video id="cutPagePreviewVideo" controls playsinline></video>
+            <div id="cutPagePreviewOverlay" class="subtitle-overlay"></div>
+          </div>
+          <div class="cut-control-bar">
+            <button id="cutToggleBtn" type="button" class="primary">カット開始</button>
+            <button id="cutDraftClearBtn" type="button">開始位置を解除</button>
+            <span id="cutDraftState">現在位置で1回押すと開始、もう1回押すと終了・登録</span>
+          </div>
+          <div id="cutTimeline" class="cut-timeline"></div>
+        </section>
+        <aside class="cut-side-panel">
+          <div class="cut-side-tabs" role="tablist" aria-label="カット編集一覧">
+            <button id="cutListTabBtn" type="button" class="active" role="tab">カット一覧</button>
+            <button id="cutSubtitleTabBtn" type="button" role="tab">字幕一覧</button>
+          </div>
+          <section id="cutListPanel" class="cut-list-panel">
+            <div class="section-title">
+              <h2>カット区間</h2>
+              <span id="cutCount">0件</span>
+            </div>
+            <div class="mode-row">
+              <button id="cutUndoLastBtn" type="button">最後のカットを取り消す</button>
+            </div>
+            <div class="cut-selection-tools">
+              <span id="selectedCutState">手動カットを選択してください</span>
+              <button id="setSelectedCutStartBtn" type="button" disabled>開始を現在位置に変更</button>
+              <button id="setSelectedCutEndBtn" type="button" disabled>終了を現在位置に変更</button>
+            </div>
+            <div class="cut-data-table-wrap">
+              <table class="cut-data-table">
+                <thead><tr><th>種別</th><th>#</th><th>開始 / 終了</th><th>長さ</th><th>操作</th></tr></thead>
+                <tbody id="cutIntervalList"></tbody>
+              </table>
+            </div>
+          </section>
+          <section id="cutSubtitlePanel" class="cut-list-panel cut-subtitle-panel hidden-panel">
+            <div class="section-title">
+              <h2>字幕</h2>
+              <span id="cutSubtitleCount">0件</span>
+            </div>
+            <div class="cut-subtitle-selection-tools">
+              <span id="cutSubtitleSelectionState">0件選択</span>
+              <button id="mergeCutSubtitlesBtn" type="button" disabled>選択字幕を連結</button>
+              <button id="deleteCutSubtitlesBtn" type="button" disabled>選択字幕を削除</button>
+              <button id="clearCutSubtitleSelectionBtn" type="button" disabled>選択解除</button>
+            </div>
+            <div class="cut-subtitle-table-wrap">
+              <table class="cut-subtitle-table">
+                <thead><tr><th><input id="cutSubtitleSelectAll" type="checkbox" aria-label="字幕をすべて選択"></th><th>#</th><th>元動画時刻</th><th>カット後時刻</th><th>字幕</th></tr></thead>
+                <tbody id="cutSubtitleList"></tbody>
+              </table>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
     <section id="subtitlePage" class="subtitle-page hidden-panel">
       <div class="settings-page-header">
         <div>
@@ -177,16 +442,17 @@
           <p>字幕の本文、時刻、話者、scene_id をここだけで編集する。</p>
         </div>
         <div class="header-actions">
-          <button id="subtitlePageBackBtn" type="button" class="primary">編集画面へ戻る</button>
+          <button id="subtitlePageBackBtn" type="button">カット編集へ戻る</button>
           <button id="subtitleSyncScenesBtn" type="button">字幕からシーン再同期</button>
           <button id="extendSubtitleTimesBtn" type="button">全字幕を前後0.5秒延長</button>
+          <button id="saveSubtitlesBtn" type="button" class="primary" disabled>字幕編集を確定してデコレーションへ</button>
         </div>
       </div>
       <div class="subtitle-page-body">
         <section class="subtitle-page-panel subtitle-preview-panel">
           <div class="section-title">
-            <h2>動画プレビュー</h2>
-            <span>字幕確認</span>
+            <h2>ASS字幕プレビュー</h2>
+            <span>フォント・色・縁・配置</span>
           </div>
           <div class="mode-row subtitle-preview-mode-row">
             <button id="subtitlePreviewSourceModeBtn" type="button">元動画</button>
@@ -196,6 +462,48 @@
             <video id="subtitlePagePreviewVideo" controls playsinline></video>
             <div id="subtitlePagePreviewOverlay" class="subtitle-overlay"></div>
           </div>
+          <section class="range-transcribe-panel">
+            <div class="section-title">
+              <h3>指定区間だけ再文字起こし</h3>
+              <span id="rangeTranscribeState">未指定</span>
+            </div>
+            <div class="range-transcribe-grid">
+              <label>開始
+                <input id="rangeTranscribeStart" type="text" value="00:00:00.000" inputmode="decimal">
+              </label>
+              <button id="setRangeTranscribeStartBtn" type="button">現在位置を開始に設定</button>
+              <label>終了
+                <input id="rangeTranscribeEnd" type="text" value="00:00:05.000" inputmode="decimal">
+              </label>
+              <button id="setRangeTranscribeEndBtn" type="button">現在位置を終了に設定</button>
+              <label>更新内容
+                <select id="rangeTranscribeMode">
+                  <option value="text_and_timing">本文と時刻を更新</option>
+                  <option value="text_only">本文だけ更新</option>
+                </select>
+              </label>
+              <label>解析用の前後余白（秒）
+                <input id="rangeTranscribePadding" type="number" min="0" max="10" step="0.1" value="1.5">
+              </label>
+            </div>
+            <div class="settings-actions">
+              <button id="runRangeTranscribeBtn" type="button" class="primary">指定区間を再文字起こし</button>
+              <button id="cancelRangeTranscribeBtn" type="button" class="hidden-panel">提案を破棄</button>
+            </div>
+            <div id="rangeTranscribeComparison" class="range-transcribe-comparison hidden-panel">
+              <div>
+                <strong>変更前</strong>
+                <pre id="rangeTranscribeBefore"></pre>
+              </div>
+              <div>
+                <strong>変更後</strong>
+                <pre id="rangeTranscribeAfter"></pre>
+              </div>
+              <div class="settings-actions range-transcribe-confirm-actions">
+                <button id="applyRangeTranscribeBtn" type="button" class="primary">この内容で置き換える</button>
+              </div>
+            </div>
+          </section>
         </section>
         <section class="subtitle-page-panel">
           <div class="section-title">
@@ -213,7 +521,7 @@
           <h2>プロジェクト一覧</h2>
           <p>保存済みの作業を開いて再開する。</p>
         </div>
-        <button id="projectListBackBtn" type="button" class="primary">編集画面へ戻る</button>
+        <button id="projectListBackBtn" type="button" class="primary">作業画面へ戻る</button>
       </div>
       <div class="project-list-page-body">
         <div class="project-list-toolbar">
@@ -229,15 +537,56 @@
           <h2>設定</h2>
           <p>Whisper と字幕の見た目を調整する。</p>
         </div>
-        <button id="settingsBackBtn" type="button" class="primary">編集画面へ戻る</button>
+        <button id="settingsBackBtn" type="button" class="primary">作業画面へ戻る</button>
       </div>
       <div class="settings-page-body">
         <section class="settings-panel">
           <div class="settings-section">
+            <h3>起動時の動作</h3>
+            <div class="settings-grid">
+              <label>起動時に開く画面
+                <select id="startupMode">
+                  <option value="resume_last" selected>前回プロジェクトの続きから</option>
+                  <option value="new_project">新規プロジェクトから</option>
+                </select>
+              </label>
+            </div>
+            <div class="settings-actions">
+              <button id="saveAppSettingsBtn" type="button">起動設定を保存</button>
+              <span id="appSettingsStatus">未確認</span>
+            </div>
+            <p class="settings-note">「前回プロジェクト」は最後に実際に開いた、または新規作成したプロジェクトです。設定は次回起動から反映されます。</p>
+          </div>
+          <div class="settings-section">
+            <h3>字幕プレビュー</h3>
+            <div class="settings-grid">
+              <label>字幕一覧を選択した時
+                <select id="subtitleClickPlaybackMode">
+                  <option value="jump" selected>該当位置から通常再生</option>
+                  <option value="loop">字幕区間をループ再生</option>
+                </select>
+              </label>
+            </div>
+            <p class="settings-note">字幕編集とカット編集の字幕一覧に共通で適用します。字幕編集の「ループ」ボタンは、この設定に関係なく選択区間をループします。</p>
+          </div>
+          <div class="settings-section">
+            <h3>既定の動画出力先</h3>
+            <div class="settings-grid">
+              <label>基準フォルダ<input id="defaultOutputDirectory" type="text" placeholder="未指定時はプロジェクト内 output" /></label>
+              <label class="checkbox-label"><input id="outputCreateProjectSubdirectory" type="checkbox" checked /> プロジェクト名のフォルダを作成する</label>
+            </div>
+            <div class="settings-actions">
+              <button id="chooseDefaultOutputDirectoryBtn" type="button">フォルダを選択</button>
+              <button id="saveDefaultOutputSettingsBtn" type="button" class="primary">出力先設定を保存</button>
+              <button id="clearDefaultOutputDirectoryBtn" type="button">指定を解除</button>
+            </div>
+            <p class="settings-note">設定どおりの出力では、プロジェクト名をファイル名として使用します。サブフォルダを有効にすると「基準フォルダ / プロジェクト名 / プロジェクト名.ext」へ出力します。</p>
+          </div>
+          <div class="settings-section">
             <h3>文字起こし</h3>
             <div class="settings-grid">
               <label>計算プロファイル<select id="computeProfile" title="gpu は文字起こしだけ厳格に扱い、前処理は CPU 許容です"><option value="auto" selected>auto</option><option value="cpu">cpu</option><option value="gpu">gpu</option></select></label>
-              <label>Whisper engine<select id="engine"><option value="whisper.cpp" selected>whisper.cpp AMD</option><option value="openai-whisper">openai-whisper</option><option value="faster-whisper">faster-whisper</option></select></label>
+              <label>Whisper engine<select id="engine"><option value="whisper.cpp-vad" selected>whisper.cpp AMD + 内蔵VAD</option><option value="whisper.cpp">whisper.cpp AMD（VAD前処理なし）</option><option value="openai-whisper">openai-whisper</option><option value="faster-whisper">faster-whisper</option></select></label>
               <label>モデル<select id="model">
                 <option value="base">base</option>
                 <option value="small">small</option>
@@ -248,19 +597,42 @@
             </div>
           </div>
           <div class="settings-section">
+            <h3>Gemini API</h3>
+            <div class="settings-grid">
+              <label>APIキー<input id="geminiApiKey" type="password" autocomplete="off" placeholder="新しいキーを入力" /></label>
+              <label>既定モデル
+                <select id="geminiModel">
+                  <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite（軽量・推奨）</option>
+                  <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite（最軽量）</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash（標準）</option>
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash（高品質）</option>
+                  <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+                </select>
+              </label>
+              <label class="checkbox-label"><input id="geminiSpeakerLabelsEnabled" type="checkbox" checked /> 話者ラベルを取得する</label>
+              <label class="checkbox-label"><input id="geminiSrtTimingPriority" type="checkbox" checked /> SRT向けの発話時刻・区切りを重視する</label>
+            </div>
+            <div class="settings-actions">
+              <button id="saveGeminiSettingsBtn" type="button">Gemini設定を保存</button>
+              <button id="clearGeminiKeyBtn" type="button">保存済みキーを削除</button>
+              <span id="geminiSettingsStatus">未設定</span>
+            </div>
+            <p class="settings-note">キーは data/private/gemini.json に分離保存され、Git管理とプロジェクト保存の対象外です。</p>
+          </div>
+          <div class="settings-section">
             <h3>音声解析</h3>
             <div class="settings-actions">
-              <label>発話タイミングプリセット
+              <label>ローカル字幕作成プリセット
                 <select id="audioTimingPreset">
-                  <option value="standard">標準</option>
-                  <option value="strict" selected>発話を厳密に拾う</option>
-                  <option value="bgm_strong">BGMが強い動画</option>
-                  <option value="whisperx_precise">精密補正・重い</option>
-                  <option value="loose">余白多め</option>
+                  <option value="fast">最速</option>
+                  <option value="normal" selected>普通</option>
+                  <option value="bgm_precision">精度・BGM分離</option>
+                  <option value="maximum">最高・精度最優先</option>
                 </select>
               </label>
               <button id="applyAudioTimingPresetBtn" type="button">プリセットを適用</button>
             </div>
+            <p id="audioTimingPresetDescription" class="settings-note">smallモデルとVAD時刻補正を使う標準設定です。</p>
             <div class="settings-grid">
               <label class="checkbox-label"><input id="useVad" type="checkbox" checked /> VADを使う</label>
               <label class="checkbox-label"><input id="voiceIsolationEnabled" type="checkbox" /> 声抽出を使う</label>
@@ -293,24 +665,54 @@
             </div>
           </div>
           <div class="settings-section">
-            <h3>字幕焼き込み</h3>
-            <div class="settings-grid">
-              <label>字幕フォント<input id="subtitleFontName" type="text" value="Meiryo" /></label>
-              <label>字幕サイズ<input id="subtitleFontSize" type="number" value="42" step="1" min="8" /></label>
-              <label>字幕の黒縁<input id="subtitleOutlineWidth" type="number" value="2" step="1" min="0" /></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <h3>最終出力</h3>
-            <div class="settings-grid">
-              <label>出力プリセット
-                <select id="outputProfile">
-                  <option value="mp4_compat">MP4 / H.264 + AAC</option>
-                  <option value="mp4_lossless">MKV / FFV1 + FLAC（ロスレス）</option>
-                  <option value="mkv_lossless">MKV / FFV1 + FLAC</option>
+            <h3>ASS字幕の既定スタイル</h3>
+            <div class="settings-actions">
+              <label>基本プリセット
+                <select id="assSubtitlePreset">
+                  <optgroup label="YouTube向け">
+                    <option value="ass_youtube_standard">YouTube 標準</option>
+                    <option value="ass_youtube_commentary">YouTube 解説・ハウツー</option>
+                    <option value="ass_youtube_pop">YouTube ポップ・実況</option>
+                    <option value="ass_youtube_emphasis">YouTube 強調・ツッコミ</option>
+                    <option value="ass_youtube_shorts">YouTube Shorts 中央</option>
+                    <option value="ass_youtube_cinema">YouTube Vlog・映画調</option>
+                  </optgroup>
+                  <optgroup label="基本・書体別">
+                    <option value="ass_standard">標準</option>
+                    <option value="ass_zen_kaku">Zen 角ゴシック</option>
+                    <option value="ass_zen_maru">Zen 丸ゴシック</option>
+                    <option value="ass_zen_mincho">Zen オールド明朝</option>
+                    <option value="ass_apple_like">Apple風</option>
+                    <option value="ass_cinema">映画字幕風</option>
+                  </optgroup>
                 </select>
               </label>
+              <button id="applyAssSubtitlePresetBtn" type="button">プリセットを適用</button>
+              <button id="resetAssSubtitleDefaultsBtn" type="button">標準に戻す</button>
+              <span id="assFontAvailabilityStatus"></span>
             </div>
+            <div class="settings-grid">
+              <label>日本語フォント<select id="subtitleFontName"></select></label>
+              <label>フォントサイズ<input id="subtitleFontSize" type="number" value="44" step="1" min="8" max="160" /></label>
+              <label>文字色<input id="assSubtitlePrimaryColor" type="color" value="#ffffff" /></label>
+              <label>縁の色<input id="assSubtitleOutlineColor" type="color" value="#000000" /></label>
+              <label>縁の幅<input id="subtitleOutlineWidth" type="number" value="3" step="0.5" min="0" max="20" /></label>
+              <label>影の深さ<input id="assSubtitleShadowDepth" type="number" value="1" step="0.5" min="0" max="20" /></label>
+              <label class="checkbox-label"><input id="assSubtitleBold" type="checkbox" checked /> 太字</label>
+              <label class="checkbox-label"><input id="assSubtitleItalic" type="checkbox" /> 斜体</label>
+              <label>配置
+                <select id="assSubtitleAlignment">
+                  <option value="7">左上</option><option value="8">上中央</option><option value="9">右上</option>
+                  <option value="4">左中央</option><option value="5">中央</option><option value="6">右中央</option>
+                  <option value="1">左下</option><option value="2" selected>下中央</option><option value="3">右下</option>
+                </select>
+              </label>
+              <label>左余白<input id="assSubtitleMarginL" type="number" value="60" step="1" min="0" max="1000" /></label>
+              <label>右余白<input id="assSubtitleMarginR" type="number" value="60" step="1" min="0" max="1000" /></label>
+              <label>上下余白<input id="assSubtitleMarginV" type="number" value="48" step="1" min="0" max="1000" /></label>
+              <label>文字間隔<input id="assSubtitleSpacing" type="number" value="0" step="0.5" min="-10" max="40" /></label>
+            </div>
+            <p class="settings-note">ここで設定したStyleを全字幕の基礎値にします。字幕編集で個別設定を有効にした字幕だけ、この値を上書きします。推奨日本語フォントは setup.bat または download-japanese-fonts.bat で導入できます。</p>
           </div>
         </section>
       </div>
@@ -329,7 +731,8 @@
           <button id="exportDecorationAssPackageBtn" type="button">カット動画+ASS出力</button>
           <button id="saveDecorationBtn" type="button" class="primary">保存</button>
           <button id="exportDecorationJsonBtn" type="button">JSON出力</button>
-          <button id="decorationBackBtn" type="button" class="primary">編集画面へ戻る</button>
+          <button id="decorationToPreviewBtn" type="button" class="primary">保存してプレビューへ</button>
+          <button id="decorationBackBtn" type="button">字幕編集へ戻る</button>
         </div>
       </div>
       <div class="decoration-page-body">
@@ -397,6 +800,7 @@
           <button id="openMpvPreviewBtn" type="button">240p/3fps軽量プレビュー</button>
           <button id="decorationPreviewPlayBtn" type="button">再生</button>
           <button id="decorationPreviewPauseBtn" type="button">停止</button>
+          <button id="previewToExportBtn" type="button" class="primary">動画出力へ進む</button>
           <button id="previewCheckBackBtn" type="button">デコレーションへ戻る</button>
         </div>
       </div>
@@ -420,11 +824,69 @@
       </div>
     </section>
 
+    <section id="exportPage" class="export-page hidden-panel">
+      <div class="settings-page-header">
+        <div>
+          <h2>動画出力</h2>
+          <p>確定済みの字幕、カット、装飾を使って最終ファイルを書き出す。</p>
+        </div>
+        <button id="exportBackBtn" type="button">プレビュー点検へ戻る</button>
+      </div>
+      <div class="export-page-body">
+        <section class="export-panel">
+          <div class="settings-grid">
+            <label>出力内容
+              <select id="finalOutputMode">
+                <optgroup label="字幕を別ファイルで出力">
+                  <option value="video_srt">カット動画 + 通常ASS</option>
+                  <option value="video_ass">カット動画 + 装飾ASS</option>
+                </optgroup>
+                <optgroup label="字幕を映像へ焼き込み">
+                  <option value="burn_srt">通常ASSを動画に焼き込み</option>
+                  <option value="decorated_burned">装飾ASSを動画に焼き込み</option>
+                </optgroup>
+                <optgroup label="字幕トラックとして埋め込み">
+                  <option value="embed_srt">通常ASS字幕トラックを埋め込み（MKV）</option>
+                  <option value="embed_ass">装飾ASS字幕トラックを埋め込み（MKV）</option>
+                </optgroup>
+              </select>
+            </label>
+            <label>出力プリセット
+              <select id="outputProfile">
+                <option value="mp4_compat">MP4 / H.264 + AAC</option>
+                <option value="mp4_lossless">MKV / FFV1 + FLAC（ロスレス）</option>
+                <option value="mkv_lossless">MKV / FFV1 + FLAC</option>
+              </select>
+            </label>
+          </div>
+          <div class="settings-section export-destination-section">
+            <h3>今回の出力先</h3>
+            <div class="settings-grid">
+              <label>出力フォルダ<input id="customOutputDirectory" type="text" placeholder="出力先フォルダを選択" /></label>
+              <label>ファイル名<input id="customOutputFilename" type="text" placeholder="プロジェクト名" /></label>
+            </div>
+            <div class="settings-actions">
+              <button id="chooseCustomOutputDirectoryBtn" type="button">フォルダを選択</button>
+            </div>
+          </div>
+          <label class="checkbox-label export-toggle hidden-panel"><input id="burnSubtitles" type="checkbox" />字幕を焼き込む</label>
+          <div id="exportSnapshotSummary" class="export-snapshot-summary">出力前の確認待ちです。</div>
+          <div class="settings-actions export-actions">
+            <button id="exportCustomBtn" type="button" class="primary export-primary" disabled>指定した名前で出力</button>
+            <button id="exportBtn" type="button" class="export-primary" disabled>設定どおりに出力</button>
+            <button id="openExportDirectoryBtn" type="button" disabled>保存フォルダを開く</button>
+          </div>
+          <div id="configuredOutputSummary" class="export-snapshot-summary">設定出力先: プロジェクト内 output</div>
+        </section>
+      </div>
+    </section>
+
     <footer class="status-bar">
       <span id="status">待機中</span>
       <span id="paths"></span>
     </footer>
 
+    <script src="/workflow-state.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

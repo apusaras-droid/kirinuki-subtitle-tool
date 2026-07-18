@@ -51,7 +51,7 @@ Windows向けの静的ビルドを入れてください。
 以下のモデルを `tools\whisper.cpp\models` に置いてください。
 
 - ggml-large-v3.bin
-- ggml-silero-v5.1.2.bin
+- ggml-silero-v6.2.0.bin
 
 必要に応じて追加:
 - ggml-base.bin

@@ -241,23 +241,31 @@ def normalize_subtitle_durations(
     max_duration: float = 4.5,
     min_gap: float = 0.05,
 ) -> list[dict]:
+    """Normalize invalid ranges without shortening recognized speech.
+
+    Readability limits belong in subtitle splitting.  Truncating a recognized
+    interval makes the caption disappear while the speaker is still talking.
+    Candidate timestamps are retained so the UI can choose each edge.
+    """
     normalized: list[dict] = []
     ordered = list(subtitles)
-    for idx, sub in enumerate(ordered):
+    for sub in ordered:
         item = dict(sub)
-        text = str(item.get("text", ""))
-        visible_chars = len(re.sub(r"\s+", "", text))
-        target = visible_chars / chars_per_second if visible_chars else min_duration
-        target = max(min_duration, min(max_duration, target))
         start = float(item.get("output_start_sec", item.get("start_sec", 0.0)))
         end = float(item.get("output_end_sec", item.get("end_sec", start)))
-        if end - start > target:
-            end = start + target
-        if end - start < min_duration:
-            end = start + min_duration
-        if idx + 1 < len(ordered):
-            next_start = float(ordered[idx + 1].get("output_start_sec", ordered[idx + 1].get("start_sec", end)))
-            end = min(end, max(start + 0.05, next_start - min_gap))
+        end = max(start + 0.05, end)
+        whisper_start = float(item.get("whisper_start_sec", start))
+        whisper_end = max(whisper_start + 0.05, float(item.get("whisper_end_sec", end)))
+        item["whisper_start_sec"] = round(whisper_start, 3)
+        item["whisper_end_sec"] = round(whisper_end, 3)
+        item.setdefault("vad_start_sec", None)
+        item.setdefault("vad_end_sec", None)
+        item.setdefault("auto_start_sec", round(start, 3))
+        item.setdefault("auto_end_sec", round(end, 3))
+        item.setdefault("start_timing_source", "whisper")
+        item.setdefault("end_timing_source", "whisper")
+        item.setdefault("selected_start_sec", round(start, 3))
+        item.setdefault("selected_end_sec", round(end, 3))
         item["source_start_sec"] = float(item.get("source_start_sec", start))
         item["source_end_sec"] = float(item.get("source_end_sec", end))
         item["range_relative_start_sec"] = float(item.get("range_relative_start_sec", start))
@@ -267,11 +275,97 @@ def normalize_subtitle_durations(
         normalized.append(item)
     return normalized
 
-def _match_vad_interval(
-    whisper_start: float,
-    whisper_end: float,
+
+def filter_repetitive_hallucinations(
+    subtitles: list[dict],
     vad_intervals: list[dict],
-    max_gap_sec: float = 1.5,
+    *,
+    repeat_count: int = 3,
+    repeat_window_sec: float = 30.0,
+    min_vad_overlap_ratio: float = 0.35,
+) -> tuple[list[dict], list[dict]]:
+    """Drop repeated Whisper text only when VAD provides weak speech evidence."""
+
+    def normalized_text(value: object) -> str:
+        return re.sub(r"[\s、。！？!?…,.・]+", "", str(value or "")).lower()
+
+    def timing(item: dict) -> tuple[float, float]:
+        start = float(item.get("output_start_sec", item.get("start_sec", 0.0)))
+        end = float(item.get("output_end_sec", item.get("end_sec", start)))
+        return start, max(start + 0.05, end)
+
+    def vad_overlap_ratio(start: float, end: float) -> float:
+        overlaps: list[tuple[float, float]] = []
+        for interval in vad_intervals:
+            vad_start = float(interval.get("speech_start_sec", interval.get("start_sec", 0.0)))
+            vad_end = float(interval.get("speech_end_sec", interval.get("end_sec", vad_start)))
+            overlap_start = max(start, vad_start)
+            overlap_end = min(end, vad_end)
+            if overlap_end > overlap_start:
+                overlaps.append((overlap_start, overlap_end))
+        if not overlaps:
+            return 0.0
+        overlaps.sort()
+        merged: list[list[float]] = []
+        for overlap_start, overlap_end in overlaps:
+            if not merged or overlap_start > merged[-1][1]:
+                merged.append([overlap_start, overlap_end])
+            else:
+                merged[-1][1] = max(merged[-1][1], overlap_end)
+        overlap_sec = sum(overlap_end - overlap_start for overlap_start, overlap_end in merged)
+        return min(1.0, overlap_sec / max(0.05, end - start))
+
+    occurrences: dict[str, list[tuple[int, float]]] = {}
+    for index, item in enumerate(subtitles):
+        key = normalized_text(item.get("text"))
+        if len(key) < 4:
+            continue
+        start, _ = timing(item)
+        occurrences.setdefault(key, []).append((index, start))
+
+    repetitive_indices: set[int] = set()
+    for entries in occurrences.values():
+        left = 0
+        for right, (_, right_start) in enumerate(entries):
+            while right_start - entries[left][1] > repeat_window_sec:
+                left += 1
+            if right - left + 1 >= repeat_count:
+                repetitive_indices.update(index for index, _ in entries[left : right + 1])
+
+    kept: list[dict] = []
+    discarded: list[dict] = []
+    for index, subtitle in enumerate(subtitles):
+        item = dict(subtitle)
+        start, end = timing(item)
+        overlap_ratio = vad_overlap_ratio(start, end)
+        text_key = normalized_text(item.get("text"))
+        low_diversity = len(text_key) >= 40 and len(set(text_key)) / max(1, len(text_key)) <= 0.15
+        reason = None
+        if index in repetitive_indices and overlap_ratio < min_vad_overlap_ratio:
+            reason = "repeated_text_without_vad_support"
+        elif low_diversity and overlap_ratio < min_vad_overlap_ratio:
+            reason = "low_diversity_text_without_vad_support"
+        if reason:
+            discarded.append(
+                {
+                    "id": item.get("id"),
+                    "start_sec": round(start, 3),
+                    "end_sec": round(end, 3),
+                    "text": item.get("text", ""),
+                    "reason": reason,
+                    "vad_overlap_ratio": round(overlap_ratio, 4),
+                }
+            )
+            continue
+        item["vad_overlap_ratio"] = round(overlap_ratio, 4)
+        kept.append(item)
+    return kept, discarded
+
+def _match_vad_interval(
+    subtitle_start: float,
+    subtitle_end: float,
+    vad_intervals: list[dict],
+    max_gap_sec: float = 0.5,
 ) -> tuple[int | None, dict | None]:
     best_overlap_idx: int | None = None
     best_overlap: float | None = None
@@ -283,13 +377,13 @@ def _match_vad_interval(
         vad_end = float(interval.get("speech_end_sec", interval.get("end_sec", vad_start)))
         if vad_end <= vad_start:
             continue
-        overlap = min(whisper_end, vad_end) - max(whisper_start, vad_start)
-        if overlap >= 0:
+        overlap = min(subtitle_end, vad_end) - max(subtitle_start, vad_start)
+        if overlap > 0:
             if best_overlap is None or overlap > best_overlap:
                 best_overlap = overlap
                 best_overlap_idx = idx
             continue
-        gap = max(vad_start - whisper_end, whisper_start - vad_end)
+        gap = max(vad_start - subtitle_end, subtitle_start - vad_end)
         if gap <= max_gap_sec and (best_gap is None or gap < best_gap):
             best_gap = gap
             best_gap_idx = idx
@@ -308,6 +402,11 @@ def _match_vad_interval(
             "speech_end_sec": round(vad_end, 3),
             "gap_sec": 0.0,
             "overlap": True,
+            "overlap_sec": round(float(best_overlap or 0.0), 3),
+            "overlap_ratio": round(
+                float(best_overlap or 0.0) / max(0.001, subtitle_end - subtitle_start),
+                4,
+            ),
         }
     if best_gap_idx is not None:
         return best_gap_idx, best_gap_interval
@@ -321,58 +420,21 @@ def apply_vad_subtitle_corrections(
     subtitle_start_strategy: str = "hybrid",
     pre_margin_sec: float = 0.3,
     post_margin_sec: float = 0.5,
-    max_match_gap_sec: float = 1.5,
+    max_match_gap_sec: float = 0.5,
+    min_overlap_ratio: float = 0.1,
+    max_start_adjustment_sec: float = 0.75,
+    max_end_adjustment_sec: float = 0.75,
 ) -> list[dict]:
     corrected: list[dict] = []
     strategy = (subtitle_start_strategy or "hybrid").strip().lower()
     if strategy not in {"whisper", "vad", "hybrid"}:
         strategy = "hybrid"
 
-    if strategy == "whisper":
-        for idx, sub in enumerate(subtitles, start=1):
-            item = dict(sub)
-            whisper_start = float(
-                item.get(
-                    "whisper_start_sec",
-                    item.get("source_start_sec", item.get("output_start_sec", 0.0)),
-                )
-            )
-            whisper_end = float(
-                item.get(
-                    "whisper_end_sec",
-                    item.get("source_end_sec", item.get("output_end_sec", whisper_start)),
-                )
-            )
-            text = str(item.get("text", "")).strip()
-            item["id"] = item.get("id") or f"sub_{idx:04}"
-            item["whisper_start_sec"] = round(whisper_start, 3)
-            item["whisper_end_sec"] = round(whisper_end, 3)
-            item["vad_start_sec"] = None
-            item["vad_end_sec"] = None
-            item["corrected_start_sec"] = round(whisper_start, 3)
-            item["corrected_end_sec"] = round(whisper_end, 3)
-            item["source_start_sec"] = round(whisper_start, 3)
-            item["source_end_sec"] = round(whisper_end, 3)
-            item["range_relative_start_sec"] = round(whisper_start, 3)
-            item["range_relative_end_sec"] = round(whisper_end, 3)
-            item["output_start_sec"] = round(whisper_start, 3)
-            item["output_end_sec"] = round(whisper_end, 3)
-            item["subtitle_start_strategy"] = strategy
-            item["whisper_segments"] = [
-                {
-                    "text": text,
-                    "whisper_start_sec": round(whisper_start, 3),
-                    "whisper_end_sec": round(whisper_end, 3),
-                }
-            ]
-            corrected.append(item)
-        return corrected
-
-    grouped: list[dict] = []
-    group_index_by_vad: dict[int, int] = {}
-
-    for sub in subtitles:
+    for idx, sub in enumerate(subtitles, start=1):
         item = dict(sub)
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
         whisper_start = float(
             item.get(
                 "whisper_start_sec",
@@ -385,89 +447,54 @@ def apply_vad_subtitle_corrections(
                 item.get("source_end_sec", item.get("output_end_sec", whisper_start)),
             )
         )
-        match_index, matched = _match_vad_interval(whisper_start, whisper_end, vad_intervals, max_gap_sec=max_match_gap_sec)
+        normalized_start = float(item.get("output_start_sec", item.get("source_start_sec", whisper_start)))
+        normalized_end = float(item.get("output_end_sec", item.get("source_end_sec", whisper_end)))
+        normalized_end = max(normalized_start + 0.05, normalized_end)
+
+        match_index, matched = _match_vad_interval(
+            normalized_start,
+            normalized_end,
+            vad_intervals,
+            max_gap_sec=max_match_gap_sec,
+        )
+        if matched and matched.get("overlap") and float(matched.get("overlap_ratio", 0.0)) < min_overlap_ratio:
+            match_index, matched = None, None
         vad_start = float(matched["speech_start_sec"]) if matched else None
         vad_end = float(matched["speech_end_sec"]) if matched else None
 
-        if match_index is None:
-            group = {
-                "group_key": f"unmatched_{len(grouped) + 1:04}",
-                "vad_index": None,
-                "vad_start_sec": None,
-                "vad_end_sec": None,
-                "whisper_start_sec": whisper_start,
-                "whisper_end_sec": whisper_end,
-                "segments": [],
-            }
-            grouped.append(group)
-        else:
-            if match_index not in group_index_by_vad:
-                group = {
-                    "group_key": f"vad_{match_index + 1:04}",
-                    "vad_index": match_index,
-                    "vad_start_sec": vad_start,
-                    "vad_end_sec": vad_end,
-                    "whisper_start_sec": whisper_start,
-                    "whisper_end_sec": whisper_end,
-                    "segments": [],
-                }
-                group_index_by_vad[match_index] = len(grouped)
-                grouped.append(group)
-            else:
-                group = grouped[group_index_by_vad[match_index]]
-                group["whisper_start_sec"] = min(float(group["whisper_start_sec"]), whisper_start)
-                group["whisper_end_sec"] = max(float(group["whisper_end_sec"]), whisper_end)
-                if vad_start is not None:
-                    group["vad_start_sec"] = vad_start if group["vad_start_sec"] is None else min(float(group["vad_start_sec"]), vad_start)
-                if vad_end is not None:
-                    group["vad_end_sec"] = vad_end if group["vad_end_sec"] is None else max(float(group["vad_end_sec"]), vad_end)
-
-        group["segments"].append(
-            {
-                "id": item.get("id"),
-                "text": str(item.get("text", "")).strip(),
-                "whisper_start_sec": round(whisper_start, 3),
-                "whisper_end_sec": round(whisper_end, 3),
-            }
-        )
-
-    for idx, group in enumerate(grouped, start=1):
-        whisper_start = float(group["whisper_start_sec"])
-        whisper_end = float(group["whisper_end_sec"])
-        vad_start = group["vad_start_sec"]
-        vad_end = group["vad_end_sec"]
-
-        if strategy == "vad" and vad_start is not None and vad_end is not None:
-            base_start = float(vad_start)
-            base_end = float(vad_end)
-        elif strategy == "hybrid" and vad_start is not None and vad_end is not None:
-            base_start = min(whisper_start, float(vad_start))
-            base_end = max(whisper_end, float(vad_end))
-        else:
-            base_start = whisper_start
-            base_end = whisper_end
+        base_start = normalized_start
+        base_end = normalized_end
+        start_boundary_used = False
+        end_boundary_used = False
+        if strategy != "whisper" and vad_start is not None and vad_end is not None:
+            if abs(vad_start - normalized_start) <= max_start_adjustment_sec:
+                candidate = vad_start if strategy == "vad" else min(normalized_start, vad_start)
+                start_boundary_used = abs(candidate - normalized_start) > 0.0005
+                base_start = candidate
+            if abs(vad_end - normalized_end) <= max_end_adjustment_sec:
+                candidate = vad_end if strategy == "vad" else max(normalized_end, vad_end)
+                end_boundary_used = abs(candidate - normalized_end) > 0.0005
+                base_end = candidate
 
         corrected_start = max(0.0, base_start - float(pre_margin_sec))
         corrected_end = max(corrected_start + 0.05, base_end + float(post_margin_sec))
-        combined_text = "\n".join(segment["text"] for segment in group["segments"] if segment["text"]).strip()
-        if not combined_text:
-            continue
 
-        if vad_start is not None and whisper_end < float(vad_start):
-            vad_gap_sec = float(vad_start) - whisper_end
-        elif vad_end is not None and whisper_start > float(vad_end):
-            vad_gap_sec = whisper_start - float(vad_end)
-        else:
-            vad_gap_sec = 0.0 if vad_start is not None or vad_end is not None else None
-
-        corrected.append(
+        item.update(
             {
-                "id": f"sub_{idx:04}",
-                "enabled": True,
+                "id": item.get("id") or f"sub_{idx:04}",
+                "enabled": item.get("enabled", True),
                 "whisper_start_sec": round(whisper_start, 3),
                 "whisper_end_sec": round(whisper_end, 3),
-                "vad_start_sec": round(float(vad_start), 3) if vad_start is not None else None,
-                "vad_end_sec": round(float(vad_end), 3) if vad_end is not None else None,
+                "normalized_start_sec": round(normalized_start, 3),
+                "normalized_end_sec": round(normalized_end, 3),
+                "vad_start_sec": round(vad_start, 3) if vad_start is not None else None,
+                "vad_end_sec": round(vad_end, 3) if vad_end is not None else None,
+                "auto_start_sec": round(corrected_start, 3),
+                "auto_end_sec": round(corrected_end, 3),
+                "start_timing_source": "auto",
+                "end_timing_source": "auto",
+                "selected_start_sec": round(corrected_start, 3),
+                "selected_end_sec": round(corrected_end, 3),
                 "corrected_start_sec": round(corrected_start, 3),
                 "corrected_end_sec": round(corrected_end, 3),
                 "source_start_sec": round(corrected_start, 3),
@@ -477,25 +504,39 @@ def apply_vad_subtitle_corrections(
                 "output_start_sec": round(corrected_start, 3),
                 "output_end_sec": round(corrected_end, 3),
                 "subtitle_start_strategy": strategy,
-                "vad_gap_sec": round(float(vad_gap_sec), 3) if vad_gap_sec is not None else None,
-                "corrected_by_vad": True if (vad_start is not None or vad_end is not None) and (corrected_start != whisper_start or corrected_end != whisper_end) else False,
-                "group_key": group["group_key"],
-                "vad_interval_index": group["vad_index"],
-                "whisper_segments": group["segments"],
-                "text": combined_text,
+                "vad_gap_sec": matched.get("gap_sec") if matched else None,
+                "vad_match_overlap_ratio": matched.get("overlap_ratio") if matched else None,
+                "corrected_by_vad": start_boundary_used or end_boundary_used,
+                "vad_interval_index": match_index,
+                "whisper_segments": [
+                    {
+                        "id": item.get("id"),
+                        "text": text,
+                        "whisper_start_sec": round(whisper_start, 3),
+                        "whisper_end_sec": round(whisper_end, 3),
+                    }
+                ],
+                "text": text,
             }
         )
+        corrected.append(item)
+
     corrected.sort(key=lambda item: float(item.get("output_start_sec", 0.0)))
-    for idx, item in enumerate(corrected):
-        start = float(item.get("output_start_sec", 0.0))
-        end = float(item.get("output_end_sec", start))
-        if idx + 1 < len(corrected):
-            next_start = float(corrected[idx + 1].get("output_start_sec", end))
-            end = min(end, max(start + 0.05, next_start - 0.05))
-        if end <= start:
-            end = start + 0.05
-        item["corrected_end_sec"] = round(end, 3)
-        item["source_end_sec"] = round(end, 3)
-        item["range_relative_end_sec"] = round(end, 3)
-        item["output_end_sec"] = round(end, 3)
-    return corrected
+    # Preserve complete speech intervals. Overlap is valid SRT and can be
+    # resolved explicitly by the user when simultaneous captions are unwanted.
+    normalized = normalize_subtitle_durations(
+        corrected,
+        min_duration=0.05,
+    )
+    for item in normalized:
+        start = round(float(item.get("output_start_sec", 0.0)), 3)
+        end = round(max(start + 0.05, float(item.get("output_end_sec", start))), 3)
+        item["corrected_start_sec"] = start
+        item["corrected_end_sec"] = end
+        item["source_start_sec"] = start
+        item["source_end_sec"] = end
+        item["range_relative_start_sec"] = start
+        item["range_relative_end_sec"] = end
+        item["output_start_sec"] = start
+        item["output_end_sec"] = end
+    return normalized

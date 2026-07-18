@@ -14,3 +14,13 @@ tools/whisper.cpp/bin/
 tools/whisper.cpp-src/
 .pytest_cache/
 tools/whisper.cpp/models/*.bin
+data/private/
+data/settings/
+data/shared/.*.history/
+temp_*/
+temp_*
+diff_*.txt
+*.mp4
+*.mkv
+*.mov
+*.webm

@@ -1,6 +1,6 @@
 param(
   [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
-  [string[]]$Models = @("large-v3", "silero-v5.1.2"),
+  [string[]]$Models = @("large-v3", "silero-v6.2.0"),
   [switch]$SkipPip,
   [string]$StatusPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..")).Path "logs\setup-status.txt")
 )
@@ -82,7 +82,7 @@ $whisperModelMap = @{
   "small" = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
   "medium" = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
   "large-v3" = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
-  "silero-v5.1.2" = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
+  "silero-v6.2.0" = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
 }
 
 foreach ($model in $Models) {
@@ -91,14 +91,14 @@ foreach ($model in $Models) {
   if (-not $whisperModelMap.ContainsKey($name)) {
     throw "未対応のモデルです: $name"
   }
-  $filename = if ($name -eq "silero-v5.1.2") { "ggml-silero-v5.1.2.bin" } else { "ggml-$name.bin" }
+  $filename = if ($name -eq "silero-v6.2.0") { "ggml-silero-v6.2.0.bin" } else { "ggml-$name.bin" }
   $destination = Join-Path $modelDir $filename
   $before = Test-Path -LiteralPath $destination
   Invoke-Download -Url $whisperModelMap[$name] -Destination $destination
   if ($before) {
-    Append-Status "model $name: skipped (already present)"
+    Append-Status "model ${name}: skipped (already present)"
   } else {
-    Append-Status "model $name: downloaded"
+    Append-Status "model ${name}: downloaded"
   }
 }
 
@@ -108,6 +108,7 @@ Assert-PythonPackage "whisperx" "whisperx"
 Assert-PythonPackage "faster_whisper" "faster-whisper"
 Assert-PythonPackage "demucs" "demucs"
 Assert-PythonPackage "speechbrain" "speechbrain"
+Assert-PythonPackage "silero_vad" "silero-vad"
 
 Append-Status "verification: passed"
 

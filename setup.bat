@@ -7,12 +7,16 @@ set "STATUS_FILE=%SCRIPT_DIR%logs\setup-status.txt"
 if exist "%STATUS_FILE%" del /q "%STATUS_FILE%"
 
 echo [setup] starting...
-echo [setup] step 1/2: runtime
+echo [setup] step 1/4: runtime
 call "%SCRIPT_DIR%download-runtime.bat"
 if errorlevel 1 goto :fail
 
-echo [setup] step 2/2: ffmpeg
+echo [setup] step 2/4: ffmpeg
 call "%SCRIPT_DIR%download-ffmpeg.bat"
+if errorlevel 1 goto :fail
+
+echo [setup] step 3/4: Japanese fonts
+call "%SCRIPT_DIR%download-japanese-fonts.bat"
 if errorlevel 1 goto :fail
 
 if exist "%STATUS_FILE%" (
@@ -20,7 +24,7 @@ if exist "%STATUS_FILE%" (
   type "%STATUS_FILE%"
 )
 
-echo [setup] step 3/3: launch app
+echo [setup] step 4/4: launch app
 call "%SCRIPT_DIR%launch.bat"
 if errorlevel 1 goto :fail
 

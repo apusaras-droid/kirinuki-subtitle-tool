@@ -3,6 +3,8 @@ const state = {
   projectName: "",
   sourceVideo: null,
   sourceVideoUrl: null,
+  selectedAudioPreviewUrl: null,
+  selectedAudioPreviewOffsetSec: 0,
   audioPath: null,
   transcript: null,
   silences: [],
@@ -12,25 +14,52 @@ const state = {
   mode: "source",
   selectedSubtitleId: null,
   loopSubtitleId: null,
+  rangeTranscriptionProposal: null,
   editorView: "timeline",
   waveformDrafts: {
     cut: { start: null, end: null },
   },
+  cutDraftStart: null,
+  selectedCutIndex: null,
+  selectedCutSubtitleIds: [],
+  cutSideTab: "cuts",
+  cutDirty: false,
   manualCutSegments: [],
   waveformLoopRange: null,
-  appPage: "editor",
+  appPage: "project",
   sourceRanges: [],
   selectedSourceRangeIndex: 0,
   previewUrl: null,
   waveformUrl: null,
   videoInfo: null,
   processingSummary: null,
+  geminiConfig: {
+    configured: false,
+    model: "gemini-3.5-flash",
+    speaker_labels_enabled: true,
+    srt_timing_priority: true,
+  },
+  geminiModels: [],
+  geminiModelsChecked: false,
+  geminiModelsProbed: false,
+  geminiProposal: null,
+  geminiKnowledgeBase: null,
+  geminiKnowledgeDatabases: [],
   videoInfoExpanded: false,
   projectSettings: {
     default_emotion_preset_id: "emotion_neutral",
     default_subtitle_style_preset_id: "subtitle_standard",
     output_profile: "mp4_compat",
     final_output_mode: "video_srt",
+    audio_stream_index: null,
+    transcription_mode: "hybrid",
+    subtitle_click_playback_mode: "jump",
+    ass_subtitle_defaults: {
+      preset_id: "ass_standard", font_name: "Noto Sans JP", font_size: 44,
+      primary_color: "#FFFFFF", outline_color: "#000000", outline_width: 3,
+      shadow_depth: 1, bold: true, italic: false, alignment: 2,
+      margin_l: 60, margin_r: 60, margin_v: 48, spacing: 0,
+    },
   },
   projectScenes: [],
   presets: {
@@ -47,7 +76,14 @@ const state = {
   decorationProject: null,
   decorationSelectionId: null,
   decorationPreviewUrl: null,
+  lastExportResult: null,
   projectList: [],
+  appSettings: {
+    startup_mode: "resume_last",
+    last_project_id: null,
+    default_output_directory: "",
+    output_create_project_subdirectory: true,
+  },
   systemFonts: [],
   decorationEditTab: "text",
   frameSyncMode: "live",
@@ -69,24 +105,91 @@ const state = {
   },
 };
 
+const ASS_SUBTITLE_DEFAULTS = Object.freeze({
+  preset_id: "ass_standard",
+  font_name: "Noto Sans JP",
+  font_size: 44,
+  primary_color: "#FFFFFF",
+  outline_color: "#000000",
+  outline_width: 3,
+  shadow_depth: 1,
+  bold: true,
+  italic: false,
+  alignment: 2,
+  margin_l: 60,
+  margin_r: 60,
+  margin_v: 48,
+  spacing: 0,
+});
+
+const ASS_SUBTITLE_PRESETS = Object.freeze([
+  { id: "ass_standard", name: "標準", description: "汎用の白文字＋黒縁", font_name: "Noto Sans JP", fallback_font: "Meiryo", font_size: 44, outline_width: 3, shadow_depth: 1, bold: true, alignment: 2, margin_v: 48 },
+  { id: "ass_youtube_standard", name: "YouTube 標準", description: "会話を長時間読みやすい白文字＋太い黒縁", font_name: "Noto Sans JP", fallback_font: "Meiryo", font_size: 48, primary_color: "#FFFFFF", outline_color: "#000000", outline_width: 4, shadow_depth: 1, bold: true, alignment: 2, margin_v: 58 },
+  { id: "ass_youtube_commentary", name: "YouTube 解説・ハウツー", description: "数字や漢字を判別しやすいUDゴシック", font_name: "BIZ UDPGothic", fallback_font: "Noto Sans JP", font_size: 46, primary_color: "#FFFFFF", outline_color: "#111111", outline_width: 3.5, shadow_depth: 1, bold: true, alignment: 2, margin_v: 54 },
+  { id: "ass_youtube_pop", name: "YouTube ポップ・実況", description: "親しみやすい丸ゴシックの黄色テロップ", font_name: "M PLUS Rounded 1c", fallback_font: "Zen Maru Gothic", font_size: 50, primary_color: "#FFF36A", outline_color: "#111111", outline_width: 4.5, shadow_depth: 2, bold: true, alignment: 2, margin_v: 58 },
+  { id: "ass_youtube_emphasis", name: "YouTube 強調・ツッコミ", description: "短い強調文向けの極太テロップ", font_name: "Dela Gothic One", fallback_font: "Zen Kaku Gothic New", font_size: 58, primary_color: "#FFFFFF", outline_color: "#E2231A", outline_width: 5, shadow_depth: 2, bold: false, alignment: 5, margin_v: 48 },
+  { id: "ass_youtube_shorts", name: "YouTube Shorts 中央", description: "スマートフォン向けの中央大字幕", font_name: "M PLUS Rounded 1c", fallback_font: "Noto Sans JP", font_size: 56, primary_color: "#FFFFFF", outline_color: "#000000", outline_width: 5, shadow_depth: 1.5, bold: true, alignment: 5, margin_v: 48 },
+  { id: "ass_youtube_cinema", name: "YouTube Vlog・映画調", description: "落ち着いた映像向けの明朝字幕", font_name: "Zen Old Mincho", fallback_font: "Noto Serif JP", font_size: 48, primary_color: "#FFF7DE", outline_color: "#080808", outline_width: 2.5, shadow_depth: 2, bold: true, alignment: 2, margin_v: 54, spacing: 1.5 },
+  { id: "ass_zen_kaku", name: "Zen 角ゴシック", description: "端正な角ゴシック", font_name: "Zen Kaku Gothic New", fallback_font: "Noto Sans JP", font_size: 46, outline_width: 3, shadow_depth: 1, bold: true, alignment: 2, margin_v: 48 },
+  { id: "ass_zen_maru", name: "Zen 丸ゴシック", description: "柔らかい丸ゴシック", font_name: "Zen Maru Gothic", fallback_font: "Noto Sans JP", font_size: 46, outline_width: 3, shadow_depth: 1, bold: true, alignment: 2, margin_v: 48 },
+  { id: "ass_zen_mincho", name: "Zen オールド明朝", description: "和風・落ち着いた明朝", font_name: "Zen Old Mincho", fallback_font: "Noto Serif JP", font_size: 48, outline_width: 2.5, shadow_depth: 1.5, bold: true, alignment: 2, margin_v: 52, spacing: 1 },
+  { id: "ass_apple_like", name: "Apple風", description: "細めですっきりした字幕", font_name: "Noto Sans JP", fallback_font: "Yu Gothic", font_size: 43, outline_width: 2, shadow_depth: 0, bold: true, alignment: 2, margin_v: 52, spacing: 0.5 },
+  { id: "ass_cinema", name: "映画字幕風", description: "クリーム色の明朝字幕", font_name: "Noto Serif JP", fallback_font: "Yu Mincho", font_size: 48, primary_color: "#FFF7DE", outline_width: 2.5, shadow_depth: 2, bold: true, alignment: 2, margin_v: 54, spacing: 1.5 },
+]);
+
 const $ = (id) => document.getElementById(id);
 const video = $("video");
 const subtitlePageVideo = $("subtitlePagePreviewVideo");
+const cutPageVideo = $("cutPagePreviewVideo");
+const selectedAudioTrackPreview = $("selectedAudioTrackPreview");
+
+function updateAppHeaderHeight() {
+  const appHeader = document.querySelector(".app-header");
+  const height = appHeader ? Math.ceil(appHeader.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--app-header-height", `${height}px`);
+}
+
+const appHeader = document.querySelector(".app-header");
+if (appHeader && typeof ResizeObserver !== "undefined") {
+  const appHeaderResizeObserver = new ResizeObserver(updateAppHeaderHeight);
+  appHeaderResizeObserver.observe(appHeader);
+}
+window.addEventListener("resize", updateAppHeaderHeight);
+updateAppHeaderHeight();
 const statusEl = $("status");
+const workflowStore = new KirinukiWorkflow.WorkflowStore();
+const WORKFLOW_PAGE_TO_STEP = Object.fromEntries(KirinukiWorkflow.STEPS.map((step) => [step.page, step.id]));
+const WORKFLOW_STEP_TO_PAGE = Object.fromEntries(KirinukiWorkflow.STEPS.map((step) => [step.id, step.page]));
+let lastWorkflowPage = "project";
+let workflowSaveTimer = null;
 let previewSyncLock = false;
 let browserHeartbeatTimer = null;
 let taskProgressTimer = null;
 let backendProgressTimer = null;
 let activeTaskProgress = null;
+let subtitleAssStyleSaveTimer = null;
 const TASK_DURATION_HISTORY_KEY = "kirinuki_task_duration_history_v1";
 const ZOOM_BOX_PRESETS_KEY = "kirinuki_zoom_box_presets_v1";
 const TASK_FALLBACK_ESTIMATE_SEC = {
   "動画読み込み": 20,
   "音声抽出": 30,
   "文字起こし": 300,
+  "字幕だけ作成": 300,
   "文字起こし 精密補正": 1200,
+  "指定区間の再文字起こし": 180,
   "無音検出": 30,
   "カット案作成": 15,
+  "Gemini AI解析": 300,
+  "Geminiへ送信": 300,
+  "Geminiモデル確認": 15,
+  "Geminiモデル切替": 5,
+  "作品情報Web調査": 180,
+  "共通作品DB登録": 10,
+  "共通作品DB紐付け": 5,
+  "作品DB紐付け解除": 5,
+  "Gemini文字起こし": 300,
+  "Gemini字幕とカット案作成": 360,
+  "Gemini提案反映": 30,
   "仮出力": 180,
   "手動カット仮出力": 180,
   "最終出力": 300,
@@ -96,15 +199,168 @@ const TASK_FALLBACK_ESTIMATE_SEC = {
   "カット動画+ASS出力": 300,
 };
 
+function workflowArtifacts(extra = {}) {
+  const subtitles = Array.isArray(state.editPlan?.subtitles) && state.editPlan.subtitles.length
+    ? state.editPlan.subtitles
+    : (state.transcript?.subtitles || []);
+  return {
+    projectReady: Boolean(state.projectId && state.sourceVideo),
+    transcriptReady: Boolean(subtitles.length),
+    editPlanReady: Boolean(state.editPlanPath || state.editPlan),
+    cutConfirmed: workflowStore.getState().stepStatus.STEP_CUT === "completed",
+    aiSubtitleConfirmed: workflowStore.getState().stepStatus.STEP_AI_SUBTITLE === "completed",
+    subtitleConfirmed: workflowStore.getState().stepStatus.STEP_SUBTITLE_EDIT === "completed",
+    decorationReady: Boolean(state.decorationProject?.events?.length),
+    previewReady: Boolean(state.previewUrl || state.decorationPreviewUrl),
+    outputReady: Boolean(state.lastExportResult),
+    ...extra,
+  };
+}
+
+function renderWorkflowState(workflow = workflowStore.getState()) {
+  const currentStep = KirinukiWorkflow.STEPS.find((step) => step.id === workflow.currentStepId) || KirinukiWorkflow.STEPS[0];
+  const currentLabel = $("workflowCurrent");
+  if (currentLabel) currentLabel.textContent = `現在: ${currentStep.label}`;
+  for (const step of KirinukiWorkflow.STEPS) {
+    const button = document.querySelector(`[data-step-id="${step.id}"]`);
+    if (!button) continue;
+    const status = workflow.stepStatus[step.id] || "not_started";
+    const guard = canEnterWorkflowPage(step.page);
+    button.dataset.status = status;
+    button.classList.toggle("active", state.appPage === step.page);
+    button.setAttribute("aria-current", state.appPage === step.page ? "step" : "false");
+    button.disabled = !guard.allowed;
+    button.title = guard.allowed ? step.label : guard.reason;
+  }
+  const nextText = $("workflowNext");
+  const nextButton = $("workflowNextBtn");
+  const action = workflowPrimaryAction(currentStep.id);
+  if (nextText) nextText.textContent = `次の操作: ${action.label}`;
+  if (nextButton) {
+    nextButton.textContent = action.buttonLabel;
+    nextButton.disabled = Boolean(action.disabled);
+  }
+  renderExportSnapshotSummary();
+}
+
+function workflowPrimaryAction(stepId) {
+  const artifacts = workflowArtifacts();
+  if (stepId === "STEP_PROJECT") {
+    return artifacts.projectReady
+      ? { label: "PC内のWhisperで字幕を作成", buttonLabel: "ローカル字幕作成へ", targetPage: "editor" }
+      : { label: "動画を選択してプロジェクトを作成", buttonLabel: "動画を選択", controlId: "videoFile" };
+  }
+  if (stepId === "STEP_TRANSCRIBE") {
+    const mode = $("transcriptionMode")?.value || state.projectSettings?.transcription_mode || "hybrid";
+    const transcriptionReady = artifacts.transcriptReady;
+    if (transcriptionReady && mode === "local") {
+      return { label: "ローカル字幕を見ながらカットを編集", buttonLabel: "カット編集へ", targetPage: "cut" };
+    }
+    return transcriptionReady
+      ? { label: "任意のGemini AI編集へ進む（使わずに通過可能）", buttonLabel: "Gemini AI編集へ", targetPage: "aiSubtitle" }
+      : { label: "WhisperとVADをPC内で実行", buttonLabel: "ローカルで字幕作成", controlId: "transcribeOnlyBtn" };
+  }
+  if (stepId === "STEP_AI_SUBTITLE") {
+    return { label: "Gemini提案を採用、または使わずカット編集へ進む", buttonLabel: "選択を採用", controlId: "aiSubtitleConfirmBtn" };
+  }
+  if (stepId === "STEP_CUT") {
+    return artifacts.editPlanReady
+      ? { label: "カットと字幕位置を確定", buttonLabel: "カットを確定", controlId: "cutConfirmBtn" }
+      : { label: "現在の字幕からカット案を作成", buttonLabel: "カット案を作成", controlId: "transcribePlanBtn" };
+  }
+  if (stepId === "STEP_SUBTITLE_EDIT") {
+    return { label: "カット後タイムラインの字幕を保存して確定", buttonLabel: "字幕編集を確定", controlId: "saveSubtitlesBtn" };
+  }
+  if (stepId === "STEP_DECORATION") {
+    return { label: "装飾を保存してプレビューへ進む", buttonLabel: "保存してプレビューへ", controlId: "decorationToPreviewBtn" };
+  }
+  if (stepId === "STEP_PREVIEW") {
+    return artifacts.previewReady
+      ? { label: "確認済みの内容を動画出力へ渡す", buttonLabel: "動画出力へ", targetPage: "export" }
+      : { label: "軽量プレビューを作成", buttonLabel: "軽量プレビューを作成", controlId: "openMpvPreviewBtn" };
+  }
+  return { label: "確定済み設定で動画を書き出す", buttonLabel: "最終出力を実行", controlId: "exportBtn" };
+}
+
+function canEnterWorkflowPage(page) {
+  if (["project", "projects", "settings"].includes(page)) return { allowed: true, reason: "" };
+  if (!state.projectId || !state.sourceVideo) return { allowed: false, reason: "先にプロジェクトを作成してください" };
+  if (page === "editor") return { allowed: true, reason: "" };
+  if (!subtitleItems().length && ["aiSubtitle", "cut", "subtitles", "decoration", "previewCheck"].includes(page)) {
+    return { allowed: false, reason: "先に字幕を作成してください" };
+  }
+  if (page === "subtitles" && workflowStore.getState().stepStatus.STEP_CUT !== "completed") {
+    return { allowed: false, reason: "先にカット編集を確定してください" };
+  }
+  if (page === "decoration" && workflowStore.getState().stepStatus.STEP_SUBTITLE_EDIT !== "completed") {
+    return { allowed: false, reason: "先に字幕編集を確定してください" };
+  }
+  if (page === "export" && !(state.editPlanPath || state.editPlan)) {
+    return { allowed: false, reason: "先にカット案を作成してください" };
+  }
+  return { allowed: true, reason: "" };
+}
+
+function scheduleWorkflowSave() {
+  if (!state.projectId) return;
+  if (workflowSaveTimer) window.clearTimeout(workflowSaveTimer);
+  workflowSaveTimer = window.setTimeout(async () => {
+    workflowSaveTimer = null;
+    try {
+      await api("/api/projects/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: state.projectId, workflow: workflowStore.getState() }),
+      });
+    } catch (error) {
+      setStatus(`工程状態を保存できません: ${error.message || error}`, true);
+    }
+  }, 250);
+}
+
+function markWorkflowCompleted(stepId, options = {}) {
+  workflowStore.markCompleted(stepId);
+  if (options.invalidateFrom) workflowStore.invalidateFrom(options.invalidateFrom);
+  scheduleWorkflowSave();
+}
+
+function invalidateWorkflowFrom(stepId) {
+  workflowStore.invalidateFrom(stepId);
+  scheduleWorkflowSave();
+}
+
+function invalidateWorkflowAfter(stepId) {
+  workflowStore.invalidateAfter(stepId);
+  scheduleWorkflowSave();
+}
+
+function renderExportSnapshotSummary() {
+  const summary = $("exportSnapshotSummary");
+  if (!summary) return;
+  const subtitles = subtitleItems();
+  const segments = (state.editPlan?.segments || []).filter((segment) => segment.enabled !== false);
+  const effects = state.decorationProject?.screen_effect_stacks?.length || 0;
+  summary.textContent = state.projectId
+    ? `${projectDisplayName()} / 字幕 ${subtitles.length}件 / 残す区間 ${segments.length}件 / 画面効果 ${effects}件`
+    : "プロジェクトを作成してください。";
+}
+
+workflowStore.subscribe(renderWorkflowState);
+
 const AUDIO_TIMING_PRESETS = {
-  standard: {
+  fast: {
+    label: "最速",
+    description: "baseモデルとVADで高速に字幕と発話区間を作ります。動作確認や長尺素材の下見向けです。",
+    engine: "whisper.cpp-vad",
+    model: "base",
+    computeProfile: "auto",
     useVad: true,
     voiceIsolationEnabled: false,
     useIsolatedVoiceForVad: false,
     useIsolatedVoiceForWhisper: false,
-    alignTimestamps: true,
+    alignTimestamps: false,
     useWhisperxAlignment: false,
-    vadThreshold: 0.25,
+    vadThreshold: 0.5,
     minSpeechDurationSec: 0.2,
     minSilenceDurationSec: 0.5,
     vadMinSilenceDurationSec: 0.08,
@@ -115,14 +371,19 @@ const AUDIO_TIMING_PRESETS = {
     silenceThresholdDb: -35,
     minKeepSegmentDuration: 1.0,
   },
-  strict: {
+  normal: {
+    label: "普通",
+    description: "smallモデルとVAD時刻補正を使う標準設定です。速度と発話タイミングのバランスを取ります。",
+    engine: "whisper.cpp-vad",
+    model: "small",
+    computeProfile: "auto",
     useVad: true,
     voiceIsolationEnabled: false,
     useIsolatedVoiceForVad: false,
     useIsolatedVoiceForWhisper: false,
     alignTimestamps: true,
     useWhisperxAlignment: false,
-    vadThreshold: 0.22,
+    vadThreshold: 0.5,
     minSpeechDurationSec: 0.12,
     minSilenceDurationSec: 0.2,
     vadMinSilenceDurationSec: 0.08,
@@ -133,14 +394,19 @@ const AUDIO_TIMING_PRESETS = {
     silenceThresholdDb: -35,
     minKeepSegmentDuration: 0.35,
   },
-  bgm_strong: {
+  bgm_precision: {
+    label: "精度・BGM分離",
+    description: "large-v3と声抽出を使い、分離した声をVADへ渡してBGMへの誤反応を減らします。",
+    engine: "whisper.cpp-vad",
+    model: "large-v3",
+    computeProfile: "auto",
     useVad: true,
     voiceIsolationEnabled: true,
     useIsolatedVoiceForVad: true,
     useIsolatedVoiceForWhisper: false,
     alignTimestamps: true,
     useWhisperxAlignment: false,
-    vadThreshold: 0.32,
+    vadThreshold: 0.5,
     minSpeechDurationSec: 0.16,
     minSilenceDurationSec: 0.28,
     vadMinSilenceDurationSec: 0.1,
@@ -151,14 +417,19 @@ const AUDIO_TIMING_PRESETS = {
     silenceThresholdDb: -38,
     minKeepSegmentDuration: 0.45,
   },
-  whisperx_precise: {
+  maximum: {
+    label: "最高・精度最優先",
+    description: "large-v3、声抽出VAD、WhisperX時刻補正を併用します。最も重く、最終品質確認向けです。",
+    engine: "whisper.cpp-vad",
+    model: "large-v3",
+    computeProfile: "auto",
     useVad: true,
-    voiceIsolationEnabled: false,
-    useIsolatedVoiceForVad: false,
+    voiceIsolationEnabled: true,
+    useIsolatedVoiceForVad: true,
     useIsolatedVoiceForWhisper: false,
     alignTimestamps: true,
     useWhisperxAlignment: true,
-    vadThreshold: 0.22,
+    vadThreshold: 0.5,
     minSpeechDurationSec: 0.12,
     minSilenceDurationSec: 0.2,
     vadMinSilenceDurationSec: 0.08,
@@ -169,25 +440,15 @@ const AUDIO_TIMING_PRESETS = {
     silenceThresholdDb: -35,
     minKeepSegmentDuration: 0.35,
   },
-  loose: {
-    useVad: true,
-    voiceIsolationEnabled: false,
-    useIsolatedVoiceForVad: false,
-    useIsolatedVoiceForWhisper: false,
-    alignTimestamps: true,
-    useWhisperxAlignment: false,
-    vadThreshold: 0.2,
-    minSpeechDurationSec: 0.18,
-    minSilenceDurationSec: 0.6,
-    vadMinSilenceDurationSec: 0.12,
-    speechPadSec: 0.08,
-    preMarginSec: 0.5,
-    postMarginSec: 0.8,
-    mergeSilenceGapSec: 0.75,
-    silenceThresholdDb: -35,
-    minKeepSegmentDuration: 1.0,
-  },
 };
+
+const LEGACY_AUDIO_PRESET_MAP = Object.freeze({
+  standard: "normal",
+  strict: "normal",
+  bgm_strong: "bgm_precision",
+  whisperx_precise: "maximum",
+  loose: "normal",
+});
 
 function sendBrowserHeartbeat() {
   fetch("/api/browser/heartbeat", {
@@ -223,11 +484,12 @@ function playbackSourceUrl() {
 }
 
 function mirroredPreviewVideos() {
-  return [subtitlePageVideo].filter(Boolean);
+  return [subtitlePageVideo, cutPageVideo].filter(Boolean);
 }
 
 function activeMirroredPreviewVideo() {
   if (state.appPage === "subtitles") return subtitlePageVideo || null;
+  if (state.appPage === "cut") return cutPageVideo || null;
   return null;
 }
 
@@ -235,8 +497,40 @@ function primaryPlaybackVideo() {
   return activeMirroredPreviewVideo() || video;
 }
 
+function selectedAudioTrackPreviewActive() {
+  return Boolean(selectedAudioTrackPreview && state.selectedAudioPreviewUrl && state.mode !== "rendered");
+}
+
+function syncSelectedAudioTrackPreview() {
+  if (!selectedAudioTrackPreview) return;
+  if (!selectedAudioTrackPreviewActive()) {
+    if (!selectedAudioTrackPreview.paused) selectedAudioTrackPreview.pause();
+    return;
+  }
+  const media = primaryPlaybackVideo();
+  if (!media) return;
+  const offset = Number(state.selectedAudioPreviewOffsetSec || 0);
+  const targetTime = Math.max(0, Number(media.currentTime || 0) - offset);
+  selectedAudioTrackPreview.playbackRate = media.playbackRate || 1;
+  if (selectedAudioTrackPreview.readyState >= 1 && Math.abs((selectedAudioTrackPreview.currentTime || 0) - targetTime) > 0.12) {
+    try {
+      selectedAudioTrackPreview.currentTime = Math.min(targetTime, selectedAudioTrackPreview.duration || targetTime);
+    } catch {}
+  }
+  if (media.paused || Number(media.currentTime || 0) < offset) {
+    if (!selectedAudioTrackPreview.paused) selectedAudioTrackPreview.pause();
+  } else if (selectedAudioTrackPreview.paused) {
+    selectedAudioTrackPreview.play().catch(() => {});
+  }
+}
+
 function updatePreviewAudioRouting() {
   const activeMirror = activeMirroredPreviewVideo();
+  if (selectedAudioTrackPreviewActive()) {
+    if (video) video.muted = true;
+    for (const previewVideo of mirroredPreviewVideos()) previewVideo.muted = true;
+    return;
+  }
   if (video) video.muted = Boolean(activeMirror);
   for (const previewVideo of mirroredPreviewVideos()) {
     previewVideo.muted = previewVideo !== activeMirror;
@@ -259,7 +553,7 @@ function syncMirroredPreviewState(previewVideo) {
   if (!previewVideo) return;
   updatePreviewAudioRouting();
   syncMirroredPreviewSource(previewVideo);
-  if (state.appPage === "subtitles") {
+  if (activeMirroredPreviewVideo() === previewVideo) {
     previewVideo.playbackRate = video.playbackRate || previewVideo.playbackRate || 1;
     return;
   }
@@ -281,14 +575,22 @@ function syncMirroredPreviewState(previewVideo) {
 function syncAllMirroredPreviews() {
   updatePreviewAudioRouting();
   mirroredPreviewVideos().forEach(syncMirroredPreviewState);
+  syncSelectedAudioTrackPreview();
 }
 
 function bindMirroredPreviewVideo(previewVideo) {
   if (!previewVideo || previewVideo.dataset.bound === "1") return;
   previewVideo.dataset.bound = "1";
-  previewVideo.addEventListener("timeupdate", updateOverlay);
-  previewVideo.addEventListener("loadedmetadata", updateOverlay);
+  previewVideo.addEventListener("timeupdate", () => {
+    updateOverlay();
+    syncSelectedAudioTrackPreview();
+  });
+  previewVideo.addEventListener("loadedmetadata", () => {
+    updateOverlay();
+    syncSelectedAudioTrackPreview();
+  });
   previewVideo.addEventListener("play", () => {
+    syncSelectedAudioTrackPreview();
     if (previewSyncLock) return;
     if (activeMirroredPreviewVideo() === previewVideo) return;
     previewSyncLock = true;
@@ -299,6 +601,7 @@ function bindMirroredPreviewVideo(previewVideo) {
     previewSyncLock = false;
   });
   previewVideo.addEventListener("pause", () => {
+    syncSelectedAudioTrackPreview();
     if (previewSyncLock) return;
     if (activeMirroredPreviewVideo() === previewVideo) return;
     previewSyncLock = true;
@@ -306,6 +609,7 @@ function bindMirroredPreviewVideo(previewVideo) {
     previewSyncLock = false;
   });
   previewVideo.addEventListener("seeked", () => {
+    syncSelectedAudioTrackPreview();
     if (previewSyncLock) return;
     if (activeMirroredPreviewVideo() === previewVideo) {
       updateOverlay();
@@ -316,6 +620,7 @@ function bindMirroredPreviewVideo(previewVideo) {
     previewSyncLock = false;
   });
   previewVideo.addEventListener("ratechange", () => {
+    syncSelectedAudioTrackPreview();
     if (previewSyncLock) return;
     if (activeMirroredPreviewVideo() === previewVideo) return;
     previewSyncLock = true;
@@ -325,7 +630,21 @@ function bindMirroredPreviewVideo(previewVideo) {
 }
 
 bindMirroredPreviewVideo(subtitlePageVideo);
+bindMirroredPreviewVideo(cutPageVideo);
+cutPageVideo?.addEventListener("loadedmetadata", () => {
+  if (state.appPage !== "cut") return;
+  const { start, end } = sourceRangeBounds();
+  if ((cutPageVideo.currentTime || 0) < start || cutPageVideo.currentTime > end) {
+    cutPageVideo.currentTime = start;
+  }
+  renderCutTimeline();
+  updateOverlay();
+});
 updatePreviewAudioRouting();
+selectedAudioTrackPreview?.addEventListener("loadedmetadata", syncSelectedAudioTrackPreview);
+selectedAudioTrackPreview?.addEventListener("error", () => {
+  setStatus("選択した音声トラックのプレビューを読み込めませんでした", true);
+});
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -381,13 +700,16 @@ function renderTaskProgress() {
   const elapsed = (performance.now() - activeTaskProgress.startedAt) / 1000;
   const backend = activeTaskProgress.backendProgress || null;
   const estimate = activeTaskProgress.estimateSec;
-  const remaining = backend?.remaining_sec ?? (estimate ? Math.max(0, estimate - elapsed) : null);
-  const overtime = !backend && estimate && elapsed > estimate;
+  let remaining = backend?.remaining_sec ?? null;
+  if (remaining === null && estimate) {
+    remaining = elapsed <= estimate ? estimate - elapsed : Math.max(30, elapsed * 0.2);
+  }
   const percent = Number.isFinite(Number(backend?.percent)) ? ` ${Number(backend.percent).toFixed(1)}%` : "";
   const speed = Number(backend?.speed) > 0 ? ` / ${Number(backend.speed).toFixed(3)}x` : "";
   box.classList.remove("idle");
   name.textContent = `${backend?.stage || activeTaskProgress.label}中${percent}`;
-  time.textContent = `経過 ${formatDuration(elapsed)} / 残り ${remaining === null ? "推定中" : overtime ? "確認中" : formatDuration(remaining)}`;
+  const remainingLabel = backend?.estimate || (!backend && estimate) ? "推定残り" : "残り";
+  time.textContent = `経過 ${formatDuration(elapsed)} / ${remainingLabel} ${remaining === null ? "算出中" : formatDuration(remaining)}`;
   if (speed) time.textContent += speed;
 }
 
@@ -428,7 +750,7 @@ async function pollBackendProgress() {
     if (!res.ok) return;
     const data = await res.json();
     if (!activeTaskProgress) return;
-    activeTaskProgress.backendProgress = data && data.active !== false ? data : activeTaskProgress.backendProgress;
+    activeTaskProgress.backendProgress = data && data.active !== false ? data : null;
     renderTaskProgress();
   } catch {
     // Progress polling is informational and must not fail the running task.
@@ -437,15 +759,21 @@ async function pollBackendProgress() {
 
 function setBusy(busy) {
   const persistentButtons = new Set([
+    "newProjectBtn",
+    "projectPageBtn",
     "editorPageBtn",
+    "cutPageBtn",
     "subtitlePageBtn",
     "projectListPageBtn",
     "settingsPageBtn",
     "decorationPageBtn",
     "previewCheckPageBtn",
+    "exportPageBtn",
+    "workflowNextBtn",
     "saveProjectBtn",
     "overwriteProjectBtn",
     "subtitlePageBackBtn",
+    "cutPageBackBtn",
     "settingsBackBtn",
     "projectListBackBtn",
     "decorationBackBtn",
@@ -458,8 +786,9 @@ function setBusy(busy) {
 }
 
 function setProjectReady(ready) {
-  for (const id of ["saveProjectBtn", "overwriteProjectBtn", "saveSubtitlesBtn", "manualPreviewBtn", "previewRenderBtn", "exportBtn", "probeBtn", "extractBtn", "transcribeBtn", "silenceBtn", "planBtn"]) {
-    $(id).disabled = !ready;
+  for (const id of ["saveProjectBtn", "overwriteProjectBtn", "saveSubtitlesBtn", "manualPreviewBtn", "previewRenderBtn", "exportBtn", "exportCustomBtn", "openExportDirectoryBtn", "transcribeOnlyBtn", "transcribePlanBtn", "previewGeneratedSubtitlesBtn", "probeBtn", "extractBtn", "transcribeBtn", "silenceBtn"]) {
+    const control = $(id);
+    if (control) control.disabled = !ready;
   }
 }
 
@@ -524,14 +853,388 @@ function selectedStylePresetId() {
   return sub?.subtitle_style_preset_id || "";
 }
 
+function normalizeAssSubtitleStyle(raw = {}, { includeEnabled = false } = {}) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const number = (key, fallback, min, max) => Math.min(max, Math.max(min, Number(source[key] ?? fallback) || 0));
+  const color = (key, fallback) => /^#[0-9a-f]{6}$/i.test(String(source[key] || "")) ? String(source[key]).toUpperCase() : fallback;
+  const style = {
+    preset_id: String(source.preset_id || ASS_SUBTITLE_DEFAULTS.preset_id),
+    font_name: String(source.font_name || ASS_SUBTITLE_DEFAULTS.font_name),
+    font_size: Math.round(number("font_size", ASS_SUBTITLE_DEFAULTS.font_size, 8, 160)),
+    primary_color: color("primary_color", ASS_SUBTITLE_DEFAULTS.primary_color),
+    outline_color: color("outline_color", ASS_SUBTITLE_DEFAULTS.outline_color),
+    outline_width: number("outline_width", ASS_SUBTITLE_DEFAULTS.outline_width, 0, 20),
+    shadow_depth: number("shadow_depth", ASS_SUBTITLE_DEFAULTS.shadow_depth, 0, 20),
+    bold: source.bold ?? ASS_SUBTITLE_DEFAULTS.bold,
+    italic: source.italic ?? ASS_SUBTITLE_DEFAULTS.italic,
+    alignment: Math.round(number("alignment", ASS_SUBTITLE_DEFAULTS.alignment, 1, 9)),
+    margin_l: Math.round(number("margin_l", ASS_SUBTITLE_DEFAULTS.margin_l, 0, 1000)),
+    margin_r: Math.round(number("margin_r", ASS_SUBTITLE_DEFAULTS.margin_r, 0, 1000)),
+    margin_v: Math.round(number("margin_v", ASS_SUBTITLE_DEFAULTS.margin_v, 0, 1000)),
+    spacing: number("spacing", ASS_SUBTITLE_DEFAULTS.spacing, -10, 40),
+  };
+  if (includeEnabled) style.enabled = Boolean(source.enabled);
+  return style;
+}
+
+function installedFontName(name) {
+  const target = String(name || "").trim().toLowerCase();
+  return (state.systemFonts || []).find((font) => String(font).trim().toLowerCase() === target) || "";
+}
+
+function resolveAssSubtitlePreset(presetId) {
+  const preset = ASS_SUBTITLE_PRESETS.find((item) => item.id === presetId) || ASS_SUBTITLE_PRESETS[0];
+  const installedPreferred = installedFontName(preset.font_name);
+  const fallback = installedFontName(preset.fallback_font) || installedFontName("Noto Sans JP") || state.systemFonts?.[0] || "Meiryo";
+  return normalizeAssSubtitleStyle({
+    ...ASS_SUBTITLE_DEFAULTS,
+    ...preset,
+    preset_id: preset.id,
+    font_name: installedPreferred || fallback,
+  });
+}
+
+function updateAssFontAvailabilityStatus(presetId) {
+  const status = $("assFontAvailabilityStatus");
+  if (!status) return;
+  const preset = ASS_SUBTITLE_PRESETS.find((item) => item.id === presetId) || ASS_SUBTITLE_PRESETS[0];
+  const availability = installedFontName(preset.font_name)
+    ? `${preset.font_name} 使用可能`
+    : `${preset.font_name} 未導入 / ${preset.fallback_font} を使用`;
+  status.textContent = preset.description ? `${preset.description} / ${availability}` : availability;
+}
+
+function populateJapaneseAssFontSelect(select, selectedName) {
+  if (!select) return;
+  select.replaceChildren();
+  const curated = [
+    "Noto Sans JP",
+    "BIZ UDPGothic",
+    "M PLUS Rounded 1c",
+    "Dela Gothic One",
+    "Zen Kaku Gothic New",
+    "Zen Maru Gothic",
+    "Zen Old Mincho",
+  ];
+  for (const name of curated) {
+    const option = document.createElement("option");
+    const installed = installedFontName(name);
+    option.value = installed || name;
+    option.textContent = installed ? name : `${name}（未導入）`;
+    option.disabled = !installed;
+    select.appendChild(option);
+  }
+  for (const name of state.systemFonts || []) {
+    if (curated.some((item) => item.toLowerCase() === String(name).toLowerCase())) continue;
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  }
+  const resolved = installedFontName(selectedName) || selectedName;
+  select.value = resolved;
+  if (!select.value && resolved) {
+    const option = document.createElement("option");
+    option.value = resolved;
+    option.textContent = `${resolved}（現在の設定）`;
+    select.appendChild(option);
+    select.value = resolved;
+  }
+}
+
+function applyAssSubtitleStyleToForm(rawStyle) {
+  const style = normalizeAssSubtitleStyle(rawStyle);
+  if ($("assSubtitlePreset")) $("assSubtitlePreset").value = style.preset_id;
+  populateJapaneseAssFontSelect($("subtitleFontName"), style.font_name);
+  if ($("subtitleFontSize")) $("subtitleFontSize").value = String(style.font_size);
+  if ($("assSubtitlePrimaryColor")) $("assSubtitlePrimaryColor").value = style.primary_color.toLowerCase();
+  if ($("assSubtitleOutlineColor")) $("assSubtitleOutlineColor").value = style.outline_color.toLowerCase();
+  if ($("subtitleOutlineWidth")) $("subtitleOutlineWidth").value = String(style.outline_width);
+  if ($("assSubtitleShadowDepth")) $("assSubtitleShadowDepth").value = String(style.shadow_depth);
+  if ($("assSubtitleBold")) $("assSubtitleBold").checked = style.bold;
+  if ($("assSubtitleItalic")) $("assSubtitleItalic").checked = style.italic;
+  if ($("assSubtitleAlignment")) $("assSubtitleAlignment").value = String(style.alignment);
+  if ($("assSubtitleMarginL")) $("assSubtitleMarginL").value = String(style.margin_l);
+  if ($("assSubtitleMarginR")) $("assSubtitleMarginR").value = String(style.margin_r);
+  if ($("assSubtitleMarginV")) $("assSubtitleMarginV").value = String(style.margin_v);
+  if ($("assSubtitleSpacing")) $("assSubtitleSpacing").value = String(style.spacing);
+  updateAssFontAvailabilityStatus(style.preset_id);
+}
+
+function assSubtitleStyleFromForm() {
+  return normalizeAssSubtitleStyle({
+    preset_id: $("assSubtitlePreset")?.value || "ass_custom",
+    font_name: $("subtitleFontName")?.value || ASS_SUBTITLE_DEFAULTS.font_name,
+    font_size: $("subtitleFontSize")?.value,
+    primary_color: $("assSubtitlePrimaryColor")?.value,
+    outline_color: $("assSubtitleOutlineColor")?.value,
+    outline_width: $("subtitleOutlineWidth")?.value,
+    shadow_depth: $("assSubtitleShadowDepth")?.value,
+    bold: $("assSubtitleBold")?.checked,
+    italic: $("assSubtitleItalic")?.checked,
+    alignment: $("assSubtitleAlignment")?.value,
+    margin_l: $("assSubtitleMarginL")?.value,
+    margin_r: $("assSubtitleMarginR")?.value,
+    margin_v: $("assSubtitleMarginV")?.value,
+    spacing: $("assSubtitleSpacing")?.value,
+  });
+}
+
+function effectiveAssStyleForSubtitle(sub) {
+  const defaults = normalizeAssSubtitleStyle(state.projectSettings?.ass_subtitle_defaults || ASS_SUBTITLE_DEFAULTS);
+  const override = normalizeAssSubtitleStyle(sub?.ass_style || {}, { includeEnabled: true });
+  return override.enabled ? { ...defaults, ...override } : defaults;
+}
+
 function syncProjectSettingsForm() {
   if ($("defaultEmotionPreset")) $("defaultEmotionPreset").value = state.projectSettings?.default_emotion_preset_id || "emotion_neutral";
   if ($("defaultSubtitleStylePreset")) $("defaultSubtitleStylePreset").value = state.projectSettings?.default_subtitle_style_preset_id || "subtitle_standard";
   if ($("outputProfile")) $("outputProfile").value = state.projectSettings?.output_profile || "mp4_compat";
   if ($("finalOutputMode")) $("finalOutputMode").value = state.projectSettings?.final_output_mode || "video_srt";
+  if ($("customOutputFilename") && $("customOutputFilename").dataset.projectId !== String(state.projectId || "")) {
+    $("customOutputFilename").value = state.projectName || state.projectId || "";
+    $("customOutputDirectory").value = state.appSettings?.default_output_directory || "";
+    $("customOutputFilename").dataset.projectId = String(state.projectId || "");
+  }
+  if ($("transcriptionMode")) $("transcriptionMode").value = state.projectSettings?.transcription_mode || "hybrid";
+  if ($("subtitleClickPlaybackMode")) {
+    $("subtitleClickPlaybackMode").value = state.projectSettings?.subtitle_click_playback_mode === "loop" ? "loop" : "jump";
+  }
+  renderAudioTrackOptions();
+  applyAssSubtitleStyleToForm(state.projectSettings?.ass_subtitle_defaults || ASS_SUBTITLE_DEFAULTS);
   const audio = state.projectSettings?.audio_timing || {};
-  if ($("audioTimingPreset")) $("audioTimingPreset").value = audio.preset_id || "strict";
+  const presetId = normalizeAudioPresetId(audio.local_profile_id || audio.preset_id || "normal");
+  if ($("audioTimingPreset")) $("audioTimingPreset").value = presetId;
+  if ($("localTranscriptionPreset")) $("localTranscriptionPreset").value = presetId;
   applyAudioTimingValues(audio, { keepPreset: true, silent: true });
+  updateTranscriptionModeUi();
+  renderAppSettings();
+}
+
+function updateTranscriptionModeUi() {
+  const mode = $("transcriptionMode")?.value || "hybrid";
+  const definitions = {
+    local: {
+      heading: "ローカル字幕作成",
+      description: "PC内のWhisperで文字起こしし、VADまたは無音検出でカット案を作ります。音声を外部サービスへ送信しません。",
+      badge: "ローカル処理",
+      badgeClass: "local",
+      button: "Whisperで字幕とカット案を作成",
+    },
+    gemini: {
+      heading: "Gemini直接文字起こし",
+      description: "抽出音声をGeminiへ送信して字幕本文を作り、発話区間とカット案は既存のVAD・無音検出で作成します。",
+      badge: "Googleへ音声を送信",
+      badgeClass: "cloud",
+      button: "Geminiで字幕とカット案を作成",
+    },
+    hybrid: {
+      heading: "Whisper + Gemini校正",
+      description: "まずPC内のWhisperとVADで字幕を作り、次工程で音声をGeminiへ送って本文修正・結合・チャプター・カット候補を提案します。",
+      badge: "ローカル + 外部AI",
+      badgeClass: "cloud",
+      button: "Whisperで字幕を作成してGemini校正へ",
+    },
+  };
+  const selected = definitions[mode] || definitions.hybrid;
+  if ($("transcriptionModeHeading")) $("transcriptionModeHeading").textContent = selected.heading;
+  if ($("transcriptionModeDescription")) $("transcriptionModeDescription").textContent = selected.description;
+  if ($("transcriptionModeBadge")) {
+    $("transcriptionModeBadge").textContent = selected.badge;
+    $("transcriptionModeBadge").className = `processing-badge ${selected.badgeClass}`;
+  }
+  if ($("transcribeOnlyBtn")) {
+    $("transcribeOnlyBtn").textContent = mode === "gemini" ? "Geminiで字幕だけ作成" : "Whisperで字幕だけ作成";
+  }
+  if ($("transcribePlanBtn")) $("transcribePlanBtn").textContent = state.editPlan ? "現在の字幕からカット案を再作成" : "現在の字幕からカット案を作成";
+  if ($("localTranscriptionPreset")) {
+    $("localTranscriptionPreset").disabled = mode === "gemini";
+    $("localTranscriptionPreset").title = mode === "gemini" ? "Gemini直接文字起こしでは使用しません" : "Whisper・VAD・声抽出・時刻補正をまとめて変更します";
+  }
+  renderWorkflowState();
+}
+
+async function loadGeminiSettings() {
+  const data = await api("/api/settings/gemini", { method: "GET" });
+  state.geminiConfig = data;
+  await loadGeminiModels().catch((error) => {
+    if ($("geminiModelAvailability")) $("geminiModelAvailability").textContent = `確認失敗: ${error.message || error}`;
+  });
+  if ($("geminiModel")) $("geminiModel").value = data.model || "gemini-3.5-flash";
+  if ($("geminiPageModel")) $("geminiPageModel").value = data.model || "gemini-3.5-flash";
+  if ($("geminiSpeakerLabelsEnabled")) $("geminiSpeakerLabelsEnabled").checked = data.speaker_labels_enabled !== false;
+  if ($("geminiSrtTimingPriority")) $("geminiSrtTimingPriority").checked = data.srt_timing_priority !== false;
+  const text = data.configured ? `設定済み ${data.masked_key || ""} (${data.source})` : "未設定";
+  if ($("geminiSettingsStatus")) $("geminiSettingsStatus").textContent = text;
+  if ($("geminiPageStatus")) $("geminiPageStatus").textContent = data.configured ? "API利用可能" : "APIキー未設定";
+  return data;
+}
+
+function renderAppSettings() {
+  const mode = state.appSettings?.startup_mode || "resume_last";
+  if ($("startupMode")) $("startupMode").value = mode;
+  if ($("defaultOutputDirectory")) $("defaultOutputDirectory").value = state.appSettings?.default_output_directory || "";
+  if ($("outputCreateProjectSubdirectory")) {
+    $("outputCreateProjectSubdirectory").checked = state.appSettings?.output_create_project_subdirectory !== false;
+  }
+  const configuredDirectory = state.appSettings?.default_output_directory || "";
+  if ($("customOutputDirectory") && !$("customOutputDirectory").value.trim()) {
+    $("customOutputDirectory").value = configuredDirectory;
+  }
+  if ($("configuredOutputSummary")) {
+    const projectName = state.projectName || state.projectId || "プロジェクト名";
+    const createSubdirectory = state.appSettings?.output_create_project_subdirectory !== false;
+    $("configuredOutputSummary").textContent = configuredDirectory
+      ? `設定出力先: ${configuredDirectory}${createSubdirectory ? ` / ${projectName}` : ""}`
+      : "設定出力先: プロジェクト内 output";
+  }
+  if ($("appSettingsStatus")) {
+    const last = state.appSettings?.last_project_id;
+    $("appSettingsStatus").textContent = mode === "resume_last"
+      ? (last ? `前回: ${last}` : "前回プロジェクトは未記録")
+      : "新規プロジェクトから開始";
+  }
+}
+
+async function loadAppSettings() {
+  const data = await api("/api/settings/app", { method: "GET" });
+  state.appSettings = data || state.appSettings;
+  renderAppSettings();
+  return state.appSettings;
+}
+
+async function updateAppSettings(updates = {}) {
+  const data = await api("/api/settings/app", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  state.appSettings = data || state.appSettings;
+  renderAppSettings();
+  return state.appSettings;
+}
+
+async function selectOutputDirectory(inputId) {
+  const input = $(inputId);
+  if (!input) return null;
+  const data = await api("/api/system/select-output-directory", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initial_directory: input.value.trim() || null }),
+  });
+  if (data.directory) input.value = data.directory;
+  return data.directory || null;
+}
+
+async function saveDefaultOutputSettings() {
+  const updates = {
+    default_output_directory: $("defaultOutputDirectory")?.value?.trim() || "",
+    output_create_project_subdirectory: $("outputCreateProjectSubdirectory")?.checked !== false,
+  };
+  await updateAppSettings(updates);
+  if ($("customOutputDirectory") && !$("customOutputDirectory").value.trim()) {
+    $("customOutputDirectory").value = updates.default_output_directory;
+  }
+}
+
+async function rememberLastProject(projectId) {
+  if (!projectId) return state.appSettings;
+  return updateAppSettings({ last_project_id: projectId });
+}
+
+async function initializeStartupProject() {
+  await loadAppSettings();
+  if (state.appSettings.startup_mode !== "resume_last") {
+    setAppPage("project");
+    setStatus("新規プロジェクトから開始します");
+    return;
+  }
+  let projectId = state.appSettings.last_project_id;
+  if (!projectId) {
+    const projects = await loadProjectList();
+    projectId = projects[0]?.project_id || null;
+  }
+  if (!projectId) {
+    setAppPage("project");
+    setStatus("再開できる保存済みプロジェクトがありません");
+    return;
+  }
+  try {
+    await loadProjectById(projectId);
+    setStatus(`前回のプロジェクト「${state.projectName || projectId}」を再開しました`);
+  } catch (error) {
+    await updateAppSettings({ last_project_id: null }).catch(() => {});
+    resetProjectRuntimeState();
+    setProjectReady(false);
+    setAppPage("project");
+    setStatus(`前回のプロジェクトを開けませんでした: ${error.message || error}`, true);
+  }
+}
+
+function renderGeminiModelOptions() {
+  const models = state.geminiModels || [];
+  if (!models.length) return;
+  for (const id of ["geminiModel", "geminiPageModel"]) {
+    const select = $(id);
+    if (!select) continue;
+    const current = select.value || state.geminiConfig?.model || "gemini-3.5-flash";
+    select.textContent = "";
+    for (const model of models) {
+      const option = document.createElement("option");
+      option.value = model.id;
+      const probeLabel = model.probe_status === "ready"
+        ? " - 利用可能"
+        : (model.probe_status === "rate_limited" ? " - 現在制限中" : (model.probe_status === "error" ? " - 疎通エラー" : ""));
+      option.textContent = `${model.label}（${model.profile}）${model.availability === "unavailable" ? " - 利用不可" : probeLabel}`;
+      option.title = model.description || "";
+      option.disabled = state.geminiModelsChecked && model.availability === "unavailable";
+      select.appendChild(option);
+    }
+    const currentOption = Array.from(select.options).find((option) => option.value === current && !option.disabled);
+    const fallback = Array.from(select.options).find((option) => !option.disabled);
+    select.value = currentOption?.value || fallback?.value || current;
+  }
+  const available = models.filter((model) => model.availability === "available").length;
+  const ready = models.filter((model) => model.probe_status === "ready").length;
+  const rateLimited = models.filter((model) => model.probe_status === "rate_limited").length;
+  if ($("geminiModelAvailability")) {
+    $("geminiModelAvailability").textContent = state.geminiModelsProbed
+      ? `利用可能 ${ready} / 制限中 ${rateLimited} / 全${models.length}モデル`
+      : (state.geminiModelsChecked
+        ? `${available}/${models.length}モデルを検出（ボタンで疎通確認）`
+        : "モデル一覧を確認できませんでした");
+  }
+}
+
+async function loadGeminiModels(force = false) {
+  if (!force && state.geminiModels.length) {
+    renderGeminiModelOptions();
+    return state.geminiModels;
+  }
+  const data = await api(`/api/settings/gemini/models${force ? "?probe=true" : ""}`, { method: "GET" });
+  state.geminiModels = Array.isArray(data.models) ? data.models : [];
+  state.geminiModelsChecked = data.checked === true;
+  state.geminiModelsProbed = data.probed === true;
+  renderGeminiModelOptions();
+  return state.geminiModels;
+}
+
+async function saveGeminiSettings(clearKey = false) {
+  const data = await api("/api/settings/gemini", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: clearKey ? null : ($("geminiApiKey")?.value || ""),
+      model: $("geminiModel")?.value || "gemini-3.5-flash",
+      clear_key: clearKey,
+      speaker_labels_enabled: $("geminiSpeakerLabelsEnabled")?.checked !== false,
+      srt_timing_priority: $("geminiSrtTimingPriority")?.checked !== false,
+    }),
+  });
+  if ($("geminiApiKey")) $("geminiApiKey").value = "";
+  state.geminiConfig = data;
+  await loadGeminiSettings();
+  return data;
 }
 
 function autoProjectNameForFile(fileName) {
@@ -574,11 +1277,59 @@ function setInputValue(id, value) {
   if (input) input.value = String(value);
 }
 
+function normalizeAudioPresetId(value) {
+  const id = String(value || "normal");
+  return AUDIO_TIMING_PRESETS[id] ? id : (LEGACY_AUDIO_PRESET_MAP[id] || "normal");
+}
+
+function normalizedAudioTimingOverrides(values = {}) {
+  const result = {};
+  const mappings = {
+    detection_mode: ["useVad", (value) => value === "vad"],
+    voice_isolation_enabled: ["voiceIsolationEnabled", Boolean],
+    use_isolated_voice_for_vad: ["useIsolatedVoiceForVad", Boolean],
+    use_isolated_voice_for_whisper: ["useIsolatedVoiceForWhisper", Boolean],
+    align_timestamps: ["alignTimestamps", Boolean],
+    use_whisperx_alignment: ["useWhisperxAlignment", Boolean],
+    vad_threshold: ["vadThreshold", Number],
+    min_speech_duration_sec: ["minSpeechDurationSec", Number],
+    min_silence_duration_sec: ["minSilenceDurationSec", Number],
+    speech_pad_sec: ["speechPadSec", Number],
+    pre_margin_sec: ["preMarginSec", Number],
+    post_margin_sec: ["postMarginSec", Number],
+    merge_silence_gap_sec: ["mergeSilenceGapSec", Number],
+    silence_threshold_db: ["silenceThresholdDb", Number],
+    min_keep_segment_duration: ["minKeepSegmentDuration", Number],
+    engine: ["engine", String],
+    model: ["model", String],
+    compute_profile: ["computeProfile", String],
+  };
+  for (const [sourceKey, [targetKey, convert]] of Object.entries(mappings)) {
+    if (values[sourceKey] !== undefined && values[sourceKey] !== null) result[targetKey] = convert(values[sourceKey]);
+  }
+  if (values.vad_min_silence_duration_ms !== undefined) result.vadMinSilenceDurationSec = Number(values.vad_min_silence_duration_ms) / 1000;
+  for (const key of Object.keys(AUDIO_TIMING_PRESETS.normal)) {
+    if (values[key] !== undefined) result[key] = values[key];
+  }
+  return result;
+}
+
+function renderAudioPresetDescription(presetId) {
+  const preset = AUDIO_TIMING_PRESETS[presetId] || AUDIO_TIMING_PRESETS.normal;
+  for (const id of ["localTranscriptionPresetDescription", "audioTimingPresetDescription"]) {
+    if ($(id)) $(id).textContent = preset.description;
+  }
+}
+
 function applyAudioTimingValues(values = {}, options = {}) {
-  const presetId = values.preset_id || $("audioTimingPreset")?.value || "strict";
-  const preset = AUDIO_TIMING_PRESETS[presetId] || AUDIO_TIMING_PRESETS.strict;
-  const next = { ...preset, ...values };
-  if (!options.keepPreset && $("audioTimingPreset")) $("audioTimingPreset").value = presetId;
+  const presetId = normalizeAudioPresetId(values.local_profile_id || values.preset_id || $("audioTimingPreset")?.value || $("localTranscriptionPreset")?.value || "normal");
+  const preset = AUDIO_TIMING_PRESETS[presetId] || AUDIO_TIMING_PRESETS.normal;
+  const next = { ...preset, ...normalizedAudioTimingOverrides(values) };
+  if ($("audioTimingPreset")) $("audioTimingPreset").value = presetId;
+  if ($("localTranscriptionPreset")) $("localTranscriptionPreset").value = presetId;
+  setInputValue("engine", next.engine);
+  setInputValue("model", next.model);
+  setInputValue("computeProfile", next.computeProfile);
   setChecked("useVad", next.useVad);
   setChecked("voiceIsolationEnabled", next.voiceIsolationEnabled);
   setChecked("useIsolatedVoiceForVad", next.useIsolatedVoiceForVad);
@@ -595,6 +1346,7 @@ function applyAudioTimingValues(values = {}, options = {}) {
   setInputValue("mergeSilenceGapSec", next.mergeSilenceGapSec);
   setInputValue("silenceThresholdDb", next.silenceThresholdDb);
   setInputValue("minKeepSegmentDuration", next.minKeepSegmentDuration);
+  renderAudioPresetDescription(presetId);
   syncAudioSettingsControls();
   if (!options.silent) {
     setStatus(`発話タイミング設定を「${$("audioTimingPreset")?.selectedOptions?.[0]?.textContent || presetId}」にしました`);
@@ -607,14 +1359,18 @@ function audioTimingSettings() {
   const speechPadSec = numericInputValue("speechPadSec", 0.05);
   const minSilenceDurationSec = numericInputValue("minSilenceDurationSec", 0.5);
   return {
-    preset_id: $("audioTimingPreset")?.value || "strict",
+    preset_id: normalizeAudioPresetId($("audioTimingPreset")?.value || $("localTranscriptionPreset")?.value || "normal"),
+    local_profile_id: normalizeAudioPresetId($("localTranscriptionPreset")?.value || $("audioTimingPreset")?.value || "normal"),
+    engine: $("engine")?.value || "whisper.cpp",
+    model: $("model")?.value || "small",
+    compute_profile: $("computeProfile")?.value || "auto",
     detection_mode: $("useVad")?.checked ? "vad" : "silencedetect",
     voice_isolation_enabled: Boolean($("voiceIsolationEnabled")?.checked),
     use_isolated_voice_for_vad: Boolean($("useIsolatedVoiceForVad")?.checked),
     use_isolated_voice_for_whisper: Boolean($("useIsolatedVoiceForWhisper")?.checked),
     align_timestamps: Boolean($("alignTimestamps")?.checked),
     use_whisperx_alignment: Boolean($("useWhisperxAlignment")?.checked),
-    vad_threshold: numericInputValue("vadThreshold", 0.25),
+    vad_threshold: numericInputValue("vadThreshold", 0.5),
     min_speech_duration_sec: minSpeechDurationSec,
     min_silence_duration_sec: minSilenceDurationSec,
     vad_min_speech_duration_ms: Math.max(1, Math.round(minSpeechDurationSec * 1000)),
@@ -679,7 +1435,7 @@ function resetProjectDefaultPresetsToStandard() {
 
 async function loadPresets() {
   const data = await api("/api/presets", { method: "GET" });
-  const fontData = await api("/api/system/fonts", { method: "GET" }).catch(() => ({ fonts: [] }));
+  const fontData = await api("/api/system/fonts?refresh=true", { method: "GET" }).catch(() => ({ fonts: [] }));
   const filteredFonts = japaneseFontNames(fontData.fonts || []);
   state.systemFonts = filteredFonts.length ? filteredFonts : ["Meiryo", "Yu Gothic", "Yu Mincho", "MS Gothic", "MS Mincho"];
   state.presets = {
@@ -698,6 +1454,7 @@ async function loadPresets() {
     emotion_labels: data.emotion_labels || ["neutral", "joy", "anger", "sadness", "surprise", "fear", "embarrassment", "teasing"],
   };
   updatePresetSelectors();
+  syncProjectSettingsForm();
   renderSubtitles();
   renderVideoInfo();
   renderDecorationPage();
@@ -721,10 +1478,10 @@ async function saveProjectScenes() {
   state.projectScenes = data.project?.scenes || state.projectScenes;
 }
 
-async function persistCurrentSubtitles() {
+async function persistCurrentSubtitles(options = {}) {
   if (!state.projectId) return;
   const subtitles = subtitleItems();
-  if (!subtitles.length) throw new Error("先に字幕を生成してください");
+  if (!subtitles.length && !options.allowEmpty) throw new Error("先に字幕を生成してください");
   if (state.editPlan) {
     state.editPlan.subtitles = subtitles;
     const data = await api("/api/edit-plan/update", {
@@ -956,7 +1713,11 @@ async function saveProjectSettings() {
     default_subtitle_style_preset_id: $("defaultSubtitleStylePreset")?.value || "subtitle_standard",
     output_profile: $("outputProfile")?.value || "mp4_compat",
     final_output_mode: $("finalOutputMode")?.value || "video_srt",
+    audio_stream_index: selectedAudioStreamIndex(),
     audio_timing: audioTimingSettings(),
+    transcription_mode: $("transcriptionMode")?.value || "hybrid",
+    subtitle_click_playback_mode: $("subtitleClickPlaybackMode")?.value === "loop" ? "loop" : "jump",
+    ass_subtitle_defaults: assSubtitleStyleFromForm(),
   };
   const data = await api("/api/projects/settings", {
     method: "POST",
@@ -998,6 +1759,104 @@ function renderVideoInfo() {
   const toggle = $("videoInfoToggleBtn");
   if (body) body.classList.toggle("hidden-panel", !state.videoInfoExpanded);
   if (toggle) toggle.textContent = state.videoInfoExpanded ? "折りたたむ" : "詳細を表示";
+  renderAudioTrackOptions();
+}
+
+function parseAudioStreamIndex(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function selectedAudioStreamIndex() {
+  return parseAudioStreamIndex($("audioTrackSelect")?.value ?? state.projectSettings?.audio_stream_index);
+}
+
+function audioTrackLabel(track) {
+  const position = Number(track.audio_position ?? 0) + 1;
+  const language = String(track.language || "und").toUpperCase();
+  const title = String(track.title || "").trim();
+  const codec = String(track.codec_name || "unknown").toUpperCase();
+  const channels = Number(track.channels || 0);
+  const channelLabel = channels > 0 ? `${channels}ch` : String(track.channel_layout || "").trim();
+  const details = [language, title, codec, channelLabel].filter(Boolean).join(" / ");
+  return `音声 ${position}: ${details}${track.is_default ? "（既定）" : ""}`;
+}
+
+function renderAudioTrackOptions() {
+  const select = $("audioTrackSelect");
+  const description = $("audioTrackDescription");
+  if (!select) return;
+  const tracks = Array.isArray(state.videoInfo?.audio_tracks) ? state.videoInfo.audio_tracks : [];
+  select.textContent = "";
+  if (!tracks.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = state.videoInfo?.has_audio === false ? "音声トラックなし" : "動画を読み込むと選択できます";
+    select.appendChild(option);
+    select.disabled = true;
+    if (description) description.textContent = state.videoInfo?.has_audio === false
+      ? "この動画には音声トラックがありません。"
+      : "文字起こし・VAD・カット後の出力音声に使用します。";
+    return;
+  }
+
+  const configuredIndex = parseAudioStreamIndex(state.projectSettings?.audio_stream_index);
+  const defaultIndex = parseAudioStreamIndex(state.videoInfo?.default_audio_stream_index);
+  const selectedIndex = tracks.some((track) => Number(track.stream_index) === configuredIndex)
+    ? configuredIndex
+    : (tracks.some((track) => Number(track.stream_index) === defaultIndex) ? defaultIndex : Number(tracks[0].stream_index));
+  for (const track of tracks) {
+    const option = document.createElement("option");
+    option.value = String(track.stream_index);
+    option.textContent = audioTrackLabel(track);
+    select.appendChild(option);
+  }
+  select.value = String(selectedIndex);
+  select.disabled = tracks.length <= 1;
+  state.projectSettings = { ...(state.projectSettings || {}), audio_stream_index: selectedIndex };
+  const selectedTrack = tracks.find((track) => Number(track.stream_index) === selectedIndex);
+  if (description) {
+    description.textContent = tracks.length > 1
+      ? `全${tracks.length}トラック。選択中: ${audioTrackLabel(selectedTrack)}。プレビュー・解析・出力に使用します。`
+      : `${audioTrackLabel(selectedTrack)}を使用します。`;
+  }
+}
+
+function clearSelectedAudioTrackPreview() {
+  state.selectedAudioPreviewUrl = null;
+  state.selectedAudioPreviewOffsetSec = 0;
+  if (selectedAudioTrackPreview) {
+    selectedAudioTrackPreview.pause();
+    selectedAudioTrackPreview.removeAttribute("src");
+    selectedAudioTrackPreview.load();
+  }
+  updatePreviewAudioRouting();
+}
+
+async function configureSelectedAudioTrackPreview() {
+  const tracks = Array.isArray(state.videoInfo?.audio_tracks) ? state.videoInfo.audio_tracks : [];
+  const selectedIndex = selectedAudioStreamIndex();
+  const defaultIndex = parseAudioStreamIndex(state.videoInfo?.default_audio_stream_index);
+  if (!state.projectId || selectedIndex === null || tracks.length <= 1 || selectedIndex === defaultIndex) {
+    clearSelectedAudioTrackPreview();
+    return null;
+  }
+  const data = await api("/api/audio/preview-track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, audio_stream_index: selectedIndex }),
+  });
+  state.selectedAudioPreviewUrl = data.audio_url;
+  state.selectedAudioPreviewOffsetSec = Number(data.timeline_offset_sec || 0);
+  if (selectedAudioTrackPreview) {
+    const nextSrc = `${data.audio_url}?t=${Date.now()}`;
+    selectedAudioTrackPreview.src = nextSrc;
+    selectedAudioTrackPreview.load();
+  }
+  updatePreviewAudioRouting();
+  syncSelectedAudioTrackPreview();
+  return data;
 }
 
 function emotionLabelForScene(sceneId, subtitles) {
@@ -1019,10 +1878,10 @@ function subtitleSceneLabel(index) {
 }
 
 function sceneCatalogFromSubtitles(subtitles) {
-  return (subtitles || []).map((sub, index) => {
+  return (subtitles || []).filter((sub) => sub.enabled !== false).map((sub, index) => {
     const sceneId = subtitleSceneId(index);
-    const start = Number(sub.start_sec ?? sub.output_start_sec ?? 0) || 0;
-    const end = Number(sub.end_sec ?? sub.output_end_sec ?? start) || start;
+    const start = Number(sub.output_start_sec ?? sub.edited_start_sec ?? sub.start_sec ?? 0) || 0;
+    const end = Number(sub.output_end_sec ?? sub.edited_end_sec ?? sub.end_sec ?? start) || start;
     sub.scene_id = sceneId;
     return {
       id: sceneId,
@@ -1241,18 +2100,28 @@ function renderScenes() {
 
 function setAppPage(page) {
   if (page === "scenes") page = "editor";
+  const guard = canEnterWorkflowPage(page);
+  if (!guard.allowed) {
+    setStatus(guard.reason, true);
+    return false;
+  }
   const previousPage = state.appPage;
   state.appPage = page;
+  if (WORKFLOW_PAGE_TO_STEP[page]) {
+    lastWorkflowPage = page;
+    workflowStore.setCurrent(WORKFLOW_PAGE_TO_STEP[page]);
+    scheduleWorkflowSave();
+  }
   if (page === "subtitles" && video && !video.paused) video.pause();
+  if (page === "aiSubtitle" && video && !video.paused) video.pause();
+  if (page === "cut" && video && !video.paused) video.pause();
   if (previousPage === "subtitles" && page !== "subtitles" && subtitlePageVideo && !subtitlePageVideo.paused) subtitlePageVideo.pause();
+  if (previousPage === "cut" && page !== "cut" && cutPageVideo && !cutPageVideo.paused) cutPageVideo.pause();
   if (page === "previewCheck" && subtitlePageVideo && !subtitlePageVideo.paused) subtitlePageVideo.pause();
   updatePreviewAudioRouting();
-  $("editorPageBtn").classList.toggle("active", page === "editor");
-  $("subtitlePageBtn").classList.toggle("active", page === "subtitles");
   $("projectListPageBtn").classList.toggle("active", page === "projects");
   $("settingsPageBtn").classList.toggle("active", page === "settings");
-  $("decorationPageBtn").classList.toggle("active", page === "decoration");
-  $("previewCheckPageBtn").classList.toggle("active", page === "previewCheck");
+  $("projectPage")?.classList.toggle("hidden-panel", page !== "project");
   const mainLayout = document.querySelector("main.layout");
   if (mainLayout) mainLayout.classList.toggle("hidden-panel", page !== "editor");
   $("videoShellWrap").classList.toggle("hidden-panel", page !== "editor");
@@ -1262,10 +2131,13 @@ function setAppPage(page) {
   $("workspaceWrap").classList.toggle("hidden-panel", page !== "editor");
   $("subtitle-panel")?.classList.add("hidden-panel");
   $("subtitlePage")?.classList.toggle("hidden-panel", page !== "subtitles");
+  $("aiSubtitlePage")?.classList.toggle("hidden-panel", page !== "aiSubtitle");
+  $("cutPage")?.classList.toggle("hidden-panel", page !== "cut");
   $("projectListPage").classList.toggle("hidden-panel", page !== "projects");
   $("settingsPage").classList.toggle("hidden-panel", page !== "settings");
   $("decorationPage").classList.toggle("hidden-panel", page !== "decoration");
   $("previewCheckPage")?.classList.toggle("hidden-panel", page !== "previewCheck");
+  $("exportPage")?.classList.toggle("hidden-panel", page !== "export");
   const isDecorationWorkspace = page === "decoration" || page === "previewCheck";
   if (isDecorationWorkspace && !(state.decorationProject?.events?.length) && subtitleItems().length) {
     buildDecorationProjectFromSubtitles();
@@ -1278,7 +2150,19 @@ function setAppPage(page) {
   if (page === "subtitles") {
     renderSubtitles();
   }
-  if (page === "subtitles") {
+  if (page === "aiSubtitle") {
+    renderGeminiProposal();
+    loadGeminiSettings().catch(() => {});
+    if (!state.geminiKnowledgeBase) {
+      loadGeminiKnowledgeBase().catch((error) => setStatus(error.message || String(error), true));
+    } else {
+      renderGeminiKnowledgeBase();
+    }
+  }
+  if (page === "cut") {
+    renderCutPage();
+  }
+  if (page === "subtitles" || page === "cut") {
     syncAllMirroredPreviews();
   }
   if (page === "decoration" || page === "previewCheck") renderDecorationPage();
@@ -1287,11 +2171,25 @@ function setAppPage(page) {
     renderDecorationShaderFrame();
   }
   updateZoomBoxOverlay();
+  renderWorkflowState();
   window.scrollTo(0, 0);
+  return true;
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(path, options);
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    if (error?.name === "AbortError") {
+      throw new Error("処理が中断されました。もう一度実行してください");
+    }
+    if (/NetworkError|Failed to fetch|fetch resource/i.test(message)) {
+      throw new Error("ローカルサーバーとの通信が切れました。画面を再読み込みして、もう一度実行してください");
+    }
+    throw error;
+  }
   const text = await res.text();
   let data = {};
   try {
@@ -1651,7 +2549,13 @@ async function ensureAudioExtracted() {
   const data = await api("/api/audio/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ project_id: state.projectId, video_path: state.sourceVideo, compute_profile: $("computeProfile").value, ...range }),
+    body: JSON.stringify({
+      project_id: state.projectId,
+      video_path: state.sourceVideo,
+      compute_profile: $("computeProfile").value,
+      audio_stream_index: selectedAudioStreamIndex(),
+      ...range,
+    }),
   });
   state.audioPath = data.audio_path;
   $("paths").textContent = data.audio_path;
@@ -1795,6 +2699,27 @@ function sourceMediaTimeFromOutputTime(outputTimeSec) {
   return rangeStart + (Number(last.range_relative_end_sec) || 0);
 }
 
+function outputTimeFromSourceRelativeTime(relativeTimeSec, edge = "start") {
+  const relativeTime = Math.max(0, Number(relativeTimeSec) || 0);
+  if (!state.editPlan?.segments?.length) return relativeTime;
+  const segments = (state.editPlan.segments || []).filter((segment) => segment.enabled !== false);
+  for (const segment of segments) {
+    const sourceStart = Number(segment.range_relative_start_sec) || 0;
+    const sourceEnd = Number(segment.range_relative_end_sec) || sourceStart;
+    if (relativeTime >= sourceStart && relativeTime <= sourceEnd) {
+      return (Number(segment.output_start_sec) || 0) + (relativeTime - sourceStart);
+    }
+  }
+  if (!segments.length) return relativeTime;
+  if (edge === "end") {
+    const previous = [...segments].reverse().find((segment) => Number(segment.range_relative_end_sec) <= relativeTime);
+    if (previous) return Number(previous.output_end_sec) || 0;
+  }
+  const next = segments.find((segment) => Number(segment.range_relative_start_sec) >= relativeTime);
+  if (next) return Number(next.output_start_sec) || 0;
+  return Number(segments[segments.length - 1].output_end_sec) || relativeTime;
+}
+
 function plannedOutputDuration() {
   const plan = state.editPlan;
   if (!plan) return Math.max(1, video.duration || 1);
@@ -1810,15 +2735,111 @@ function subtitleTimebase(media = video) {
   return media?.currentTime || 0;
 }
 
+function assPreviewScale(overlay) {
+  const shell = overlay?.closest?.(".video-shell");
+  const media = shell?.querySelector?.("video");
+  const renderedWidth = Number(media?.clientWidth || shell?.clientWidth || 0);
+  const renderedHeight = Number(media?.clientHeight || shell?.clientHeight || 0);
+  const sourceWidth = Number(media?.videoWidth || 1280);
+  const sourceHeight = Number(media?.videoHeight || 720);
+  const widthScale = renderedWidth > 0 ? renderedWidth / sourceWidth : 1;
+  const heightScale = renderedHeight > 0 ? renderedHeight / sourceHeight : widthScale;
+  const scale = Math.min(widthScale, heightScale);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+function applyAssSubtitleStyleToOverlay(overlay, sub) {
+  if (!overlay) return;
+  const style = effectiveAssStyleForSubtitle(sub);
+  const alignment = Number(style.alignment) || 2;
+  const column = (alignment - 1) % 3;
+  const row = Math.floor((alignment - 1) / 3);
+  const scale = assPreviewScale(overlay);
+  const outline = Math.max(0, Number(style.outline_width) || 0) * scale;
+  const shadow = Math.max(0, Number(style.shadow_depth) || 0) * scale;
+  const fontSize = Math.max(6, Number(style.font_size) * scale);
+  const spacing = (Number(style.spacing) || 0) * scale;
+  const shell = overlay.closest?.(".video-shell");
+  const media = shell?.querySelector?.("video");
+  const previewHeight = Number(media?.clientHeight || shell?.clientHeight || 0);
+  const marginV = Math.max(2, Number(style.margin_v) * scale);
+  overlay.style.fontFamily = `"${style.font_name}", sans-serif`;
+  overlay.style.fontSize = `${fontSize}px`;
+  overlay.style.color = style.primary_color;
+  overlay.style.fontWeight = style.bold ? "700" : "400";
+  overlay.style.fontStyle = style.italic ? "italic" : "normal";
+  overlay.style.animation = "none";
+  overlay.style.filter = "none";
+  overlay.style.background = "transparent";
+  overlay.style.border = "0";
+  overlay.style.boxShadow = "none";
+  overlay.style.opacity = "1";
+  overlay.style.letterSpacing = `${spacing}px`;
+  overlay.style.textAlign = column === 0 ? "left" : column === 2 ? "right" : "center";
+  overlay.style.top = row === 2 ? `${marginV}px` : row === 1 ? "50%" : "auto";
+  overlay.style.bottom = row === 0 ? `${marginV}px` : "auto";
+  overlay.style.transform = row === 1 ? "translateY(-50%)" : "none";
+  const availableHeight = previewHeight > 0
+    ? Math.max(24, previewHeight - (row === 1 ? 8 : marginV + 4))
+    : 0;
+  overlay.style.maxHeight = availableHeight > 0 ? `${availableHeight}px` : "none";
+  overlay.style.overflow = "hidden";
+
+  // ASS keeps source-resolution sizes. Only shrink the browser preview when a
+  // long caption would exceed the visible video area; the saved ASS is unchanged.
+  let fit = 1;
+  if (availableHeight > 0 && Number(overlay.scrollHeight || 0) > availableHeight) {
+    let low = 6;
+    let high = fontSize;
+    let fittedSize = low;
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      const candidate = (low + high) / 2;
+      const candidateFit = candidate / fontSize;
+      overlay.style.fontSize = `${candidate}px`;
+      overlay.style.letterSpacing = `${spacing * candidateFit}px`;
+      if (Number(overlay.scrollHeight || 0) <= availableHeight) {
+        fittedSize = candidate;
+        low = candidate;
+      } else {
+        high = candidate;
+      }
+    }
+    fit = Math.min(1, fittedSize / fontSize);
+    overlay.style.fontSize = `${fittedSize}px`;
+    overlay.style.letterSpacing = `${spacing * fit}px`;
+  }
+  const fittedOutline = outline * fit;
+  const fittedShadow = shadow * fit;
+  overlay.style.webkitTextStroke = fittedOutline > 0 ? `${fittedOutline}px ${style.outline_color}` : "0 transparent";
+  overlay.style.textShadow = fittedShadow > 0
+    ? `${fittedShadow}px ${fittedShadow}px ${Math.max(1, fittedShadow * 1.5)}px rgba(0,0,0,0.9)`
+    : "none";
+}
+
 function updateOverlay() {
   const mainMedia = primaryPlaybackVideo();
   const t = subtitleTimebase(mainMedia);
   const sub = subtitleAtTimelineTime(t, state.mode);
   $("subtitleOverlay").textContent = sub ? (sub.speaker_label ? `${sub.speaker_label}: ${sub.text}` : sub.text) : "";
+  applyAssSubtitleStyleToOverlay($("subtitleOverlay"), sub);
   const subtitlePageT = subtitlePageVideo ? subtitleTimebase(subtitlePageVideo) : t;
-  const overlaySub = subtitleAtTimelineTime(subtitlePageT, state.mode) || sub || subtitleAtTime(video.currentTime);
+  const overlaySub = subtitleAtTimelineTime(subtitlePageT, state.mode);
   const subtitlePageOverlay = $("subtitlePagePreviewOverlay");
-  if (subtitlePageOverlay) subtitlePageOverlay.textContent = overlaySub ? (overlaySub.speaker_label ? `${overlaySub.speaker_label}: ${overlaySub.text}` : overlaySub.text) : "";
+  if (subtitlePageOverlay) {
+    subtitlePageOverlay.textContent = overlaySub ? (overlaySub.speaker_label ? `${overlaySub.speaker_label}: ${overlaySub.text}` : overlaySub.text) : "";
+    applyAssSubtitleStyleToOverlay(subtitlePageOverlay, overlaySub);
+  }
+  const cutPageT = cutPageVideo ? subtitleTimebase(cutPageVideo) : t;
+  const cutSub = subtitleAtTimelineTime(cutPageT, state.mode);
+  const cutPageOverlay = $("cutPagePreviewOverlay");
+  if (cutPageOverlay) {
+    cutPageOverlay.textContent = cutSub ? (cutSub.speaker_label ? `${cutSub.speaker_label}: ${cutSub.text}` : cutSub.text) : "";
+    applyAssSubtitleStyleToOverlay(cutPageOverlay, cutSub);
+  }
+  const cutCurrentTime = $("cutCurrentTime");
+  if (cutCurrentTime) cutCurrentTime.textContent = fmtTime(cutPageT);
+  updateCutTimelinePlayhead();
+  updateCutActiveSubtitle(cutSub?.id || "");
   $("timeReadout").textContent = fmtTime(t);
   if (state.editorView === "waveform") updateWaveformPlayhead();
   drawTimeline();
@@ -1852,6 +2873,188 @@ function subtitlePlaybackRange(sub) {
 
 function currentSubtitleEditTime() {
   return Math.max(0, subtitleTimebase(primaryPlaybackVideo()));
+}
+
+function currentSubtitleSourceRelativeTime() {
+  const media = primaryPlaybackVideo();
+  if (state.mode === "source") return sourceRelativeTime(media);
+  const rangeStart = sourceRangeBounds().start;
+  return Math.max(0, sourceMediaTimeFromOutputTime(subtitleTimebase(media)) - rangeStart);
+}
+
+function subtitleSourceRelativeBounds(sub) {
+  const rangeStart = sourceRangeBounds().start;
+  if (sub.range_relative_start_sec != null) {
+    const start = Number(sub.range_relative_start_sec) || 0;
+    const end = Number(sub.range_relative_end_sec ?? start) || start;
+    return { start, end: Math.max(start, end) };
+  }
+  if (sub.original_start_sec != null || sub.source_start_sec != null) {
+    const start = Number(sub.original_start_sec ?? sub.source_start_sec) - rangeStart;
+    const end = Number(sub.original_end_sec ?? sub.source_end_sec ?? (start + rangeStart)) - rangeStart;
+    return { start, end: Math.max(start, end) };
+  }
+  const start = Number(sub.start_sec ?? sub.output_start_sec ?? 0) || 0;
+  const end = Number(sub.end_sec ?? sub.output_end_sec ?? start) || start;
+  return { start, end: Math.max(start, end) };
+}
+
+function normalizeSubtitleCandidateTime(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const range = sourceRangeBounds();
+  if (range.start > 0 && parsed >= range.start && parsed <= range.end + 0.001) {
+    return parsed - range.start;
+  }
+  return parsed;
+}
+
+function subtitleTimingCandidate(sub, edge, source) {
+  const isStart = edge === "start";
+  const fallback = subtitleSourceRelativeBounds(sub)[edge];
+  const candidates = {
+    auto: sub[isStart ? "auto_start_sec" : "auto_end_sec"] ?? sub[isStart ? "corrected_start_sec" : "corrected_end_sec"],
+    whisper: sub[isStart ? "whisper_start_sec" : "whisper_end_sec"],
+    vad: sub[isStart ? "vad_start_sec" : "vad_end_sec"],
+    manual: sub[isStart ? "manual_start_sec" : "manual_end_sec"] ?? sub[isStart ? "selected_start_sec" : "selected_end_sec"],
+  };
+  const value = normalizeSubtitleCandidateTime(candidates[source]);
+  if (value != null) return value;
+  if (source === "vad") return null;
+  return normalizeSubtitleCandidateTime(fallback);
+}
+
+function applySubtitleTimingSource(sub, edge, source, explicitRelativeValue = null) {
+  const isStart = edge === "start";
+  const value = explicitRelativeValue == null
+    ? subtitleTimingCandidate(sub, edge, source)
+    : Math.max(0, Number(explicitRelativeValue) || 0);
+  if (value == null) return false;
+  const otherEdge = isStart ? "end" : "start";
+  const other = normalizeSubtitleCandidateTime(sub[isStart ? "selected_end_sec" : "selected_start_sec"])
+    ?? subtitleSourceRelativeBounds(sub)[otherEdge];
+  if ((isStart && value >= other) || (!isStart && value <= other)) {
+    setStatus(`字幕の${isStart ? "開始" : "終了"}時刻が${isStart ? "終了" : "開始"}時刻を越えています`, true);
+    return false;
+  }
+  const sourceKey = isStart ? "start_timing_source" : "end_timing_source";
+  const selectedKey = isStart ? "selected_start_sec" : "selected_end_sec";
+  const relativeKey = isStart ? "range_relative_start_sec" : "range_relative_end_sec";
+  const sourceAbsoluteKey = isStart ? "source_start_sec" : "source_end_sec";
+  const originalKey = isStart ? "original_start_sec" : "original_end_sec";
+  const outputKey = isStart ? "output_start_sec" : "output_end_sec";
+  sub[sourceKey] = source;
+  sub[selectedKey] = roundTime(value);
+  sub[relativeKey] = roundTime(value);
+  sub[sourceAbsoluteKey] = roundTime(sourceRangeBounds().start + value);
+  sub[originalKey] = sub[sourceAbsoluteKey];
+  sub[outputKey] = roundTime(outputTimeFromSourceRelativeTime(value, edge));
+  if (source === "manual") sub[isStart ? "manual_start_sec" : "manual_end_sec"] = roundTime(value);
+  return true;
+}
+
+function setSubtitleManualOutputTime(sub, edge, outputTimeSec) {
+  const outputTime = Math.max(0, Number(outputTimeSec) || 0);
+  const relative = Math.max(0, sourceMediaTimeFromOutputTime(outputTime) - sourceRangeBounds().start);
+  return applySubtitleTimingSource(sub, edge, "manual", relative);
+}
+
+function createSubtitleTimingSourceSelect(sub, edge) {
+  const select = document.createElement("select");
+  select.className = "subtitle-timing-source";
+  select.dataset.timingEdge = edge;
+  const selected = sub[edge === "start" ? "start_timing_source" : "end_timing_source"] || "auto";
+  const options = [
+    ["auto", "自動補正"],
+    ["whisper", "Whisper"],
+    ["vad", "VAD"],
+    ["manual", "手動"],
+  ];
+  for (const [value, label] of options) {
+    const option = document.createElement("option");
+    option.value = value;
+    const candidate = subtitleTimingCandidate(sub, edge, value);
+    option.textContent = candidate == null ? `${label}（候補なし）` : `${label} ${fmtTime(candidate)}`;
+    option.disabled = candidate == null;
+    select.appendChild(option);
+  }
+  select.value = [...select.options].some((option) => option.value === selected && !option.disabled) ? selected : "auto";
+  return select;
+}
+
+function formatRangeTranscribeSubtitles(items = []) {
+  if (!items.length) return "（字幕なし）";
+  return items.map((sub) => {
+    const bounds = subtitleSourceRelativeBounds(sub);
+    return `${fmtTime(bounds.start)} - ${fmtTime(bounds.end)}\n${sub.text || ""}`;
+  }).join("\n\n");
+}
+
+function clearRangeTranscriptionProposal() {
+  state.rangeTranscriptionProposal = null;
+  $("rangeTranscribeComparison")?.classList.add("hidden-panel");
+  $("cancelRangeTranscribeBtn")?.classList.add("hidden-panel");
+  if ($("rangeTranscribeState")) $("rangeTranscribeState").textContent = "未確定";
+}
+
+function renderRangeTranscriptionProposal(data) {
+  state.rangeTranscriptionProposal = data;
+  $("rangeTranscribeBefore").textContent = formatRangeTranscribeSubtitles(data.affected_subtitles || []);
+  $("rangeTranscribeAfter").textContent = formatRangeTranscribeSubtitles(data.replacement_subtitles || []);
+  $("rangeTranscribeComparison").classList.remove("hidden-panel");
+  $("cancelRangeTranscribeBtn").classList.remove("hidden-panel");
+  const warning = (data.warnings || []).join(" / ");
+  $("rangeTranscribeState").textContent = `${(data.affected_subtitle_ids || []).length}件を対象 / ${(data.replacement_subtitles || []).length}件を生成${warning ? ` / ${warning}` : ""}`;
+}
+
+async function requestRangeTranscription() {
+  requireProject();
+  await ensureAudioExtracted();
+  const start = parseTime($("rangeTranscribeStart").value);
+  const end = parseTime($("rangeTranscribeEnd").value);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+    throw new Error("再文字起こしの開始・終了時刻を正しく指定してください");
+  }
+  const duration = sourceRangeBounds().duration;
+  if (end > duration + 0.001) throw new Error("再文字起こし区間が指定範囲を超えています");
+  const settings = audioTimingSettings();
+  const data = await api("/api/transcribe/range", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      start_sec: start,
+      end_sec: end,
+      subtitles: subtitleItems(),
+      replacement_mode: $("rangeTranscribeMode").value,
+      analysis_padding_sec: Number($("rangeTranscribePadding").value) || 0,
+      language: $("language").value || "ja",
+      model: $("model").value,
+      engine: $("engine").value,
+      ...settings,
+    }),
+  });
+  renderRangeTranscriptionProposal(data);
+  return data;
+}
+
+async function applyRangeTranscriptionProposal() {
+  const proposal = state.rangeTranscriptionProposal;
+  if (!proposal?.merged_subtitles) throw new Error("先に再文字起こしを実行してください");
+  const merged = proposal.merged_subtitles.map((item) => ({ ...item }));
+  if (state.editPlan) state.editPlan.subtitles = merged;
+  if (state.transcript) state.transcript.subtitles = merged;
+  else state.transcript = { subtitles: merged };
+  state.selectedSubtitleId = (proposal.replacement_subtitles || [])[0]?.id || merged[0]?.id || null;
+  if (state.decorationProject) {
+    syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+  }
+  await persistCurrentSubtitles();
+  clearRangeTranscriptionProposal();
+  renderSubtitles();
+  updateOverlay();
+  drawTimeline();
+  setStatus(`指定区間の字幕を更新しました（${(proposal.affected_subtitle_ids || []).length}件を置換）`);
 }
 
 function selectedDecorationPreviewWindow() {
@@ -1913,34 +3116,198 @@ function updateWaveformPlayhead() {
   playhead.style.left = `${Math.min(100, Math.max(0, (rel / duration) * 100))}%`;
 }
 
-function seekToSubtitle(sub) {
+function seekToSubtitle(sub, { loop = null } = {}) {
   const media = primaryPlaybackVideo();
+  const shouldLoop = loop === null
+    ? state.projectSettings?.subtitle_click_playback_mode === "loop"
+    : Boolean(loop);
   state.selectedSubtitleId = sub.id;
-  state.loopSubtitleId = sub.id;
+  state.loopSubtitleId = shouldLoop ? sub.id : null;
   media.currentTime = subtitlePlaybackRange(sub).start;
   renderSubtitles();
   media.play().catch(() => {});
 }
 
+function createSubtitleAssStyleEditor(sub) {
+  const details = document.createElement("details");
+  details.className = "subtitle-ass-style";
+  const rawOverride = normalizeAssSubtitleStyle(sub.ass_style || {}, { includeEnabled: true });
+  let current = effectiveAssStyleForSubtitle(sub);
+  const summary = document.createElement("summary");
+  summary.textContent = rawOverride.enabled
+    ? `ASS個別設定: ${current.font_name} / ${current.font_size}px`
+    : "ASS個別設定: プロジェクト既定を使用";
+  details.appendChild(summary);
+
+  const grid = document.createElement("div");
+  grid.className = "subtitle-ass-style-grid";
+  const field = (labelText, control) => {
+    const label = document.createElement("label");
+    label.append(document.createTextNode(labelText), control);
+    grid.appendChild(label);
+    return control;
+  };
+  const numberInput = (value, min, max, step = 1) => {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.value = String(value);
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    return input;
+  };
+  const colorInput = (value) => {
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = String(value || "#ffffff").toLowerCase();
+    return input;
+  };
+
+  const enabledLabel = document.createElement("label");
+  enabledLabel.className = "checkbox-label subtitle-ass-enable";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = rawOverride.enabled;
+  enabledLabel.append(enabled, document.createTextNode(" この字幕だけ個別設定を使う"));
+  grid.appendChild(enabledLabel);
+
+  const preset = document.createElement("select");
+  for (const item of ASS_SUBTITLE_PRESETS) {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = item.name;
+    preset.appendChild(option);
+  }
+  preset.value = current.preset_id;
+  const font = document.createElement("select");
+  populateJapaneseAssFontSelect(font, current.font_name);
+  const size = numberInput(current.font_size, 8, 160);
+  const primary = colorInput(current.primary_color);
+  const outlineColor = colorInput(current.outline_color);
+  const outlineWidth = numberInput(current.outline_width, 0, 20, 0.5);
+  const shadow = numberInput(current.shadow_depth, 0, 20, 0.5);
+  const bold = document.createElement("input");
+  bold.type = "checkbox";
+  bold.checked = current.bold;
+  const italic = document.createElement("input");
+  italic.type = "checkbox";
+  italic.checked = current.italic;
+  const alignment = document.createElement("select");
+  [[7,"左上"],[8,"上中央"],[9,"右上"],[4,"左中央"],[5,"中央"],[6,"右中央"],[1,"左下"],[2,"下中央"],[3,"右下"]].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = label;
+    alignment.appendChild(option);
+  });
+  alignment.value = String(current.alignment);
+  const marginL = numberInput(current.margin_l, 0, 1000);
+  const marginR = numberInput(current.margin_r, 0, 1000);
+  const marginV = numberInput(current.margin_v, 0, 1000);
+  const spacing = numberInput(current.spacing, -10, 40, 0.5);
+
+  field("プリセット", preset);
+  field("日本語フォント", font);
+  field("サイズ", size);
+  field("文字色", primary);
+  field("縁色", outlineColor);
+  field("縁幅", outlineWidth);
+  field("影", shadow);
+  field("太字", bold);
+  field("斜体", italic);
+  field("配置", alignment);
+  field("左余白", marginL);
+  field("右余白", marginR);
+  field("上下余白", marginV);
+  field("文字間隔", spacing);
+
+  const editableControls = [preset, font, size, primary, outlineColor, outlineWidth, shadow, bold, italic, alignment, marginL, marginR, marginV, spacing];
+  const syncDisabled = () => editableControls.forEach((control) => { control.disabled = !enabled.checked; });
+  const readControls = () => normalizeAssSubtitleStyle({
+    enabled: enabled.checked,
+    preset_id: preset.value,
+    font_name: font.value,
+    font_size: size.value,
+    primary_color: primary.value,
+    outline_color: outlineColor.value,
+    outline_width: outlineWidth.value,
+    shadow_depth: shadow.value,
+    bold: bold.checked,
+    italic: italic.checked,
+    alignment: alignment.value,
+    margin_l: marginL.value,
+    margin_r: marginR.value,
+    margin_v: marginV.value,
+    spacing: spacing.value,
+  }, { includeEnabled: true });
+  const commit = () => {
+    sub.ass_style = readControls();
+    state.selectedSubtitleId = sub.id;
+    current = effectiveAssStyleForSubtitle(sub);
+    summary.textContent = sub.ass_style.enabled
+      ? `ASS個別設定: ${current.font_name} / ${current.font_size}px`
+      : "ASS個別設定: プロジェクト既定を使用";
+    const subtitlePageOverlay = $("subtitlePagePreviewOverlay");
+    if (subtitlePageOverlay) {
+      subtitlePageOverlay.textContent = sub.speaker_label ? `${sub.speaker_label}: ${sub.text || ""}` : (sub.text || "");
+      applyAssSubtitleStyleToOverlay(subtitlePageOverlay, sub);
+    }
+    invalidateWorkflowAfter("STEP_SUBTITLE_EDIT");
+    clearTimeout(subtitleAssStyleSaveTimer);
+    subtitleAssStyleSaveTimer = setTimeout(() => persistCurrentSubtitles().catch(() => {}), 350);
+  };
+  enabled.addEventListener("change", () => {
+    syncDisabled();
+    commit();
+  });
+  preset.addEventListener("change", () => {
+    const next = resolveAssSubtitlePreset(preset.value);
+    populateJapaneseAssFontSelect(font, next.font_name);
+    size.value = String(next.font_size);
+    primary.value = next.primary_color.toLowerCase();
+    outlineColor.value = next.outline_color.toLowerCase();
+    outlineWidth.value = String(next.outline_width);
+    shadow.value = String(next.shadow_depth);
+    bold.checked = next.bold;
+    italic.checked = next.italic;
+    alignment.value = String(next.alignment);
+    marginL.value = String(next.margin_l);
+    marginR.value = String(next.margin_r);
+    marginV.value = String(next.margin_v);
+    spacing.value = String(next.spacing);
+    commit();
+  });
+  for (const control of editableControls.filter((item) => item !== preset)) control.addEventListener("change", commit);
+  syncDisabled();
+
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.textContent = "個別設定を解除";
+  reset.addEventListener("click", () => {
+    delete sub.ass_style;
+    renderSubtitles();
+    updateOverlay();
+    clearTimeout(subtitleAssStyleSaveTimer);
+    subtitleAssStyleSaveTimer = setTimeout(() => persistCurrentSubtitles().catch(() => {}), 350);
+  });
+  const actions = document.createElement("div");
+  actions.className = "subtitle-ass-style-actions";
+  actions.appendChild(reset);
+  details.append(grid, actions);
+  return details;
+}
+
 function renderSubtitles() {
   const list = state.appPage === "subtitles" ? $("subtitleListPage") : ($("subtitleList") || $("subtitleListPage"));
   const subtitles = subtitleItems();
+  if ($("previewGeneratedSubtitlesBtn")) {
+    $("previewGeneratedSubtitlesBtn").disabled = !state.projectId || !subtitles.some((sub) => sub.enabled !== false && String(sub.text || "").trim());
+  }
   const subtitleCount = state.appPage === "subtitles" ? $("subtitleCountPage") : $("subtitleCount");
   if (subtitleCount) subtitleCount.textContent = `${subtitles.length}件`;
   const subtitleCountPage = $("subtitleCountPage");
   if (subtitleCountPage && subtitleCountPage !== subtitleCount) subtitleCountPage.textContent = `${subtitles.length}件`;
   if (!list) return;
   list.textContent = "";
-  const selectedSub = subtitles.find((item) => item.id === state.selectedSubtitleId) || subtitles[0] || null;
-  const selectedDeco = decorationEventForSubtitle(selectedSub);
-  if (selectedDeco) {
-    const preview = buildDecorationPreviewNode(selectedDeco, { compact: true, includeMeta: false, includeChips: true });
-    if (preview) {
-      preview.classList.add("subtitle-preview-sync");
-      preview.style.margin = "0 0 12px 0";
-      list.appendChild(preview);
-    }
-  }
   subtitles.forEach((sub, index) => {
     const item = document.createElement("div");
     item.className = `subtitle-item${sub.id === state.selectedSubtitleId ? " selected" : ""}`;
@@ -1989,7 +3356,25 @@ function renderSubtitles() {
 
     const timeInfo = document.createElement("div");
     timeInfo.className = "subtitle-time-info";
-    timeInfo.textContent = `元: ${fmtTime(sub.original_start_sec ?? sub.source_start_sec ?? sub.output_start_sec)} - ${fmtTime(sub.original_end_sec ?? sub.source_end_sec ?? sub.output_end_sec)} / 出力: ${fmtTime(sub.output_start_sec)} - ${fmtTime(sub.output_end_sec)}`;
+    const selectedBounds = subtitleSourceRelativeBounds(sub);
+    timeInfo.textContent = `採用元: ${fmtTime(selectedBounds.start)} - ${fmtTime(selectedBounds.end)} / 出力: ${fmtTime(sub.output_start_sec)} - ${fmtTime(sub.output_end_sec)}`;
+
+    const timingControls = document.createElement("div");
+    timingControls.className = "subtitle-timing-controls";
+    const startTimingLabel = document.createElement("label");
+    startTimingLabel.appendChild(document.createTextNode("開始の採用元"));
+    startTimingLabel.appendChild(createSubtitleTimingSourceSelect(sub, "start"));
+    const endTimingLabel = document.createElement("label");
+    endTimingLabel.appendChild(document.createTextNode("終了の採用元"));
+    endTimingLabel.appendChild(createSubtitleTimingSourceSelect(sub, "end"));
+    const candidateInfo = document.createElement("div");
+    candidateInfo.className = "subtitle-timing-candidates";
+    const whisperStart = subtitleTimingCandidate(sub, "start", "whisper");
+    const whisperEnd = subtitleTimingCandidate(sub, "end", "whisper");
+    const vadStart = subtitleTimingCandidate(sub, "start", "vad");
+    const vadEnd = subtitleTimingCandidate(sub, "end", "vad");
+    candidateInfo.textContent = `Whisper ${whisperStart == null ? "--" : fmtTime(whisperStart)} - ${whisperEnd == null ? "--" : fmtTime(whisperEnd)} / VAD ${vadStart == null ? "--" : fmtTime(vadStart)} - ${vadEnd == null ? "--" : fmtTime(vadEnd)}`;
+    timingControls.append(startTimingLabel, endTimingLabel, candidateInfo);
 
     const textarea = document.createElement("textarea");
     textarea.dataset.field = "text";
@@ -2003,6 +3388,7 @@ function renderSubtitles() {
       ["end", "現在を終了"],
       ["loop", "ループ"],
       ["loop-off", "解除"],
+      ["range-transcribe", "この区間を再文字起こし"],
       ["merge-prev", "前と結合"],
       ["split", "分割"],
       ["delete", "削除"],
@@ -2017,7 +3403,9 @@ function renderSubtitles() {
     item.appendChild(meta);
     item.appendChild(speakerInfo);
     item.appendChild(timeInfo);
+    item.appendChild(timingControls);
     item.appendChild(textarea);
+    item.appendChild(createSubtitleAssStyleEditor(sub));
     item.appendChild(actions);
 
     item.addEventListener("input", (event) => {
@@ -2028,10 +3416,23 @@ function renderSubtitles() {
       else if (field === "text") sub.text = target.value;
       else if (field === "speaker_label") sub.speaker_label = target.value;
       else if (field === "scene_id") sub.scene_id = target.value;
+      else if (field === "output_start_sec" || field === "output_end_sec") {
+        setSubtitleManualOutputTime(sub, field === "output_start_sec" ? "start" : "end", parseTime(target.value));
+      }
       else sub[field] = parseTime(target.value);
       updateOverlay();
       drawTimeline();
       saveProjectScenes().catch(() => {});
+    });
+    item.addEventListener("change", (event) => {
+      const select = event.target.closest("select[data-timing-edge]");
+      if (!select) return;
+      if (applySubtitleTimingSource(sub, select.dataset.timingEdge, select.value)) {
+        renderSubtitles();
+        updateOverlay();
+        drawTimeline();
+        saveProjectScenes().catch(() => {});
+      }
     });
     item.addEventListener("click", (event) => {
       const button = event.target.closest("button");
@@ -2039,31 +3440,35 @@ function renderSubtitles() {
       if (!action) {
         if (event.target === item) {
           state.selectedSubtitleId = sub.id;
-          state.loopSubtitleId = sub.id;
           item.classList.add("selected");
           seekToSubtitle(sub);
         }
         return;
       }
       state.selectedSubtitleId = sub.id;
-      if (action === "jump" || action === "loop") seekToSubtitle(sub);
+      if (action === "jump") seekToSubtitle(sub, { loop: false });
+      if (action === "loop") seekToSubtitle(sub, { loop: true });
       if (action === "loop-off") {
         state.loopSubtitleId = null;
       }
+      if (action === "range-transcribe") {
+        const bounds = subtitleSourceRelativeBounds(sub);
+        $("rangeTranscribeStart").value = fmtTime(bounds.start);
+        $("rangeTranscribeEnd").value = fmtTime(bounds.end);
+        clearRangeTranscriptionProposal();
+        setTimeout(() => $("rangeTranscribeStart")?.focus(), 0);
+      }
       if (action === "start") {
-        const current = currentSubtitleEditTime();
-        sub.output_start_sec = current;
-        if ((Number(sub.output_end_sec) || 0) < current) sub.output_end_sec = current;
+        applySubtitleTimingSource(sub, "start", "manual", currentSubtitleSourceRelativeTime());
       }
       if (action === "end") {
-        const current = currentSubtitleEditTime();
-        sub.output_end_sec = current;
-        if ((Number(sub.output_start_sec) || 0) > current) sub.output_start_sec = current;
+        applySubtitleTimingSource(sub, "end", "manual", currentSubtitleSourceRelativeTime());
       }
       if (action === "merge-prev" && index > 0) {
         const prev = subtitles[index - 1];
         prev.text = `${prev.text || ""}${prev.text ? "\n" : ""}${sub.text || ""}`;
         prev.output_end_sec = Math.max(Number(prev.output_end_sec) || 0, Number(sub.output_end_sec) || 0);
+        setSubtitleManualOutputTime(prev, "end", prev.output_end_sec);
         prev.enabled = prev.enabled !== false || sub.enabled !== false;
         subtitles.splice(index, 1);
         state.selectedSubtitleId = prev.id;
@@ -2078,6 +3483,8 @@ function renderSubtitles() {
         const next = { ...sub, id: `sub_${Date.now()}`, output_start_sec: midpoint, text: (sub.text || "").slice(half).trim() };
         sub.output_end_sec = midpoint;
         sub.text = (sub.text || "").slice(0, half).trim();
+        setSubtitleManualOutputTime(sub, "end", midpoint);
+        setSubtitleManualOutputTime(next, "start", midpoint);
         subtitles.splice(index + 1, 0, next);
       }
       if (action === "delete") {
@@ -2099,6 +3506,21 @@ function renderSubtitles() {
   });
   renderScenes();
   renderDecorationPage();
+}
+
+function previewGeneratedSubtitles() {
+  const first = activeSubtitles().find((sub) => String(sub.text || "").trim());
+  if (!first) throw new Error("プレビューする字幕がありません。先に字幕を作成してください");
+  setMode("source");
+  state.selectedSubtitleId = first.id || null;
+  state.loopSubtitleId = null;
+  const rangeStart = sourceRangeBounds().start;
+  const relativeStart = Number(first.range_relative_start_sec ?? first.start_sec ?? first.output_start_sec ?? 0) || 0;
+  video.currentTime = Math.max(0, rangeStart + relativeStart);
+  updateOverlay();
+  drawTimeline();
+  video.play().catch(() => {});
+  setStatus(`字幕プレビュー: ${fmtTime(relativeStart)} から再生`);
 }
 
 function extendAllSubtitleDisplayTimes(paddingSec = 0.5) {
@@ -2127,6 +3549,8 @@ function extendAllSubtitleDisplayTimes(paddingSec = 0.5) {
     if (current.output_end_sec <= current.output_start_sec) current.output_end_sec = roundTime(current.output_start_sec + 0.001);
   }
   for (const sub of ordered) {
+    setSubtitleManualOutputTime(sub, "start", sub.output_start_sec);
+    setSubtitleManualOutputTime(sub, "end", sub.output_end_sec);
     sub.edited_start_sec = sub.output_start_sec;
     sub.edited_end_sec = sub.output_end_sec;
   }
@@ -2152,6 +3576,7 @@ function decorationSourceSubtitles() {
     speaker_label: sub.speaker_label || sub.speaker_id || "",
     emotion: sub.emotion || "neutral",
     subtitle_style_preset_id: sub.subtitle_style_preset_id || "",
+    ass_style: sub.ass_style ? { ...sub.ass_style } : null,
     effect_group_id: sub.effect_group_id || "",
     seed: Number(sub.seed ?? 0) || (index + 1) * 101,
     enabled: sub.enabled !== false,
@@ -4639,6 +6064,7 @@ function buildDecorationProjectFromSubtitles(source = null) {
       speaker_label: sub.speaker_label,
       emotion: sub.emotion,
       subtitle_style_preset_id: sub.subtitle_style_preset_id || emotionPresetForEmotion(sub.emotion).subtitle_style_preset_id || "subtitle_standard",
+      ass_style: sub.ass_style ? { ...sub.ass_style } : null,
       effect_group_id: sub.effect_group_id || emotionPresetForEmotion(sub.emotion).effect_group_id || (presets.effect_groups?.[0]?.id || ""),
       text_effect_group_id: sub.text_effect_group_id || sub.effect_group_id || emotionPresetForEmotion(sub.emotion).effect_group_id || (presets.effect_groups?.[0]?.id || ""),
       frame_preset_id: frame.id,
@@ -4722,6 +6148,9 @@ function syncDecorationEventsFromSubtitles(source = null) {
       end_sec: eventItem.end_sec,
       scene_id: eventItem.scene_id,
       speaker_label: eventItem.speaker_label,
+      ass_style: eventItem.ass_style
+        ? { ...eventItem.ass_style }
+        : (previousEvent.ass_style ? { ...previousEvent.ass_style } : null),
       enabled: eventItem.enabled,
     };
   });
@@ -4754,6 +6183,7 @@ function decorationEventForSubtitle(sub) {
     start_sec: sub.output_start_sec ?? eventItem.start_sec,
     end_sec: sub.output_end_sec ?? eventItem.end_sec,
     speaker_label: sub.speaker_label ?? eventItem.speaker_label,
+    ass_style: sub.ass_style ? { ...sub.ass_style } : eventItem.ass_style,
     enabled: sub.enabled ?? eventItem.enabled,
   };
 }
@@ -6790,6 +8220,8 @@ function commitWaveformSelection(start, end) {
 function removeWaveformInterval(index) {
   state.manualCutSegments.splice(index, 1);
   if (state.editPlan) state.editPlan.manual_cut_segments = normalizeIntervalList(state.manualCutSegments);
+  state.cutDirty = true;
+  invalidateWorkflowAfter("STEP_CUT");
   renderWaveformEditor();
 }
 
@@ -6863,7 +8295,497 @@ function registerWaveformSelection() {
   } else {
     setStatus("カット区間を登録しました");
   }
+  if (result.ok) {
+    state.cutDirty = true;
+    invalidateWorkflowAfter("STEP_CUT");
+  }
   renderWaveformEditor();
+}
+
+function updateCutDraftState() {
+  const label = $("cutDraftState");
+  const button = $("cutToggleBtn");
+  if (label) {
+    label.textContent = state.cutDraftStart == null
+      ? "現在位置で1回押すと開始、もう1回押すと終了・登録"
+      : `開始 ${fmtTime(state.cutDraftStart)} / 終了位置で再度押してください`;
+  }
+  if (button) {
+    button.textContent = state.cutDraftStart == null ? "カット開始" : "カット終了・登録";
+    button.classList.toggle("active", state.cutDraftStart != null);
+  }
+}
+
+function selectedManualCutInterval() {
+  const intervals = normalizeIntervalList(state.manualCutSegments || []);
+  if (state.selectedCutIndex == null) return null;
+  const index = Number(state.selectedCutIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= intervals.length) return null;
+  return intervals[index];
+}
+
+async function deleteManualCut(index) {
+  const intervals = normalizeIntervalList(state.manualCutSegments || []);
+  const targetIndex = Number(index);
+  if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= intervals.length) {
+    throw new Error("削除する手動カットを選択してください");
+  }
+  state.manualCutSegments = intervals.filter((_, itemIndex) => itemIndex !== targetIndex);
+  state.selectedCutIndex = null;
+  state.cutDirty = true;
+  await rebuildEditPlanAfterCut();
+}
+
+function updateSelectedCutState() {
+  const selected = selectedManualCutInterval();
+  const label = $("selectedCutState");
+  if (label) {
+    label.textContent = selected
+      ? `選択 #${Number(state.selectedCutIndex) + 1}: ${formatInterval(selected)} / Deleteキーで削除`
+      : "手動カットを選択してください";
+  }
+  if ($("setSelectedCutStartBtn")) $("setSelectedCutStartBtn").disabled = !selected;
+  if ($("setSelectedCutEndBtn")) $("setSelectedCutEndBtn").disabled = !selected;
+}
+
+function setCutSideTab(tab) {
+  state.cutSideTab = tab === "subtitles" ? "subtitles" : "cuts";
+  $("cutListPanel")?.classList.toggle("hidden-panel", state.cutSideTab !== "cuts");
+  $("cutSubtitlePanel")?.classList.toggle("hidden-panel", state.cutSideTab !== "subtitles");
+  $("cutListTabBtn")?.classList.toggle("active", state.cutSideTab === "cuts");
+  $("cutSubtitleTabBtn")?.classList.toggle("active", state.cutSideTab === "subtitles");
+  $("cutListTabBtn")?.setAttribute("aria-selected", state.cutSideTab === "cuts" ? "true" : "false");
+  $("cutSubtitleTabBtn")?.setAttribute("aria-selected", state.cutSideTab === "subtitles" ? "true" : "false");
+}
+
+async function updateSelectedCutBoundary(boundary) {
+  const intervals = normalizeIntervalList(state.manualCutSegments || []);
+  if (state.selectedCutIndex == null) throw new Error("先に手動カットを選択してください");
+  const index = Number(state.selectedCutIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= intervals.length) {
+    throw new Error("先に手動カットを選択してください");
+  }
+  const current = Number(cutPageVideo?.currentTime) || 0;
+  const original = intervals[index];
+  const nextStart = boundary === "start" ? current : original.src_start;
+  const nextEnd = boundary === "end" ? current : original.src_end;
+  if (nextEnd - nextStart < 0.05) {
+    throw new Error(boundary === "start" ? "開始位置は終了位置より前にしてください" : "終了位置は開始位置より後にしてください");
+  }
+  const remaining = intervals.filter((_, itemIndex) => itemIndex !== index);
+  state.manualCutSegments = remaining;
+  const result = commitWaveformSelection(nextStart, nextEnd);
+  if (!result.ok) {
+    state.manualCutSegments = intervals;
+    if (result.reason === "fully_protected") throw new Error("変更後の区間は全て保護されています");
+    throw new Error("変更後のカット区間が短すぎます");
+  }
+  const normalized = normalizeIntervalList(state.manualCutSegments || []);
+  state.manualCutSegments = normalized;
+  state.selectedCutIndex = normalized.findIndex((item) =>
+    item.src_start >= result.requested.src_start - 0.001 && item.src_end <= result.requested.src_end + 0.001
+  );
+  if (state.selectedCutIndex < 0) state.selectedCutIndex = null;
+  state.cutDirty = true;
+  await rebuildEditPlanAfterCut();
+}
+
+function updateCutActiveSubtitle(subtitleId) {
+  const list = $("cutSubtitleList");
+  if (!list) return;
+  list.querySelectorAll(".cut-subtitle-item").forEach((item) => {
+    item.classList.toggle("active", Boolean(subtitleId) && item.dataset.subtitleId === subtitleId);
+  });
+}
+
+function selectedCutSubtitleIdSet() {
+  const availableIds = new Set(activeSubtitles().map((subtitle) => String(subtitle.id || "")).filter(Boolean));
+  state.selectedCutSubtitleIds = [...new Set(state.selectedCutSubtitleIds || [])].filter((id) => availableIds.has(id));
+  return new Set(state.selectedCutSubtitleIds);
+}
+
+function selectedCutSubtitles() {
+  const selectedIds = selectedCutSubtitleIdSet();
+  return activeSubtitles()
+    .filter((subtitle) => selectedIds.has(String(subtitle.id || "")))
+    .sort((a, b) => (Number(a.output_start_sec) || 0) - (Number(b.output_start_sec) || 0));
+}
+
+function updateCutSubtitleSelectionState() {
+  const selectedIds = selectedCutSubtitleIdSet();
+  const available = activeSubtitles().filter((subtitle) => String(subtitle.id || ""));
+  const count = selectedIds.size;
+  if ($("cutSubtitleSelectionState")) $("cutSubtitleSelectionState").textContent = `${count}件選択`;
+  if ($("mergeCutSubtitlesBtn")) $("mergeCutSubtitlesBtn").disabled = count < 2;
+  if ($("deleteCutSubtitlesBtn")) $("deleteCutSubtitlesBtn").disabled = count < 1;
+  if ($("clearCutSubtitleSelectionBtn")) $("clearCutSubtitleSelectionBtn").disabled = count < 1;
+  const selectAll = $("cutSubtitleSelectAll");
+  if (selectAll) {
+    selectAll.checked = available.length > 0 && count === available.length;
+    selectAll.indeterminate = count > 0 && count < available.length;
+    selectAll.disabled = available.length === 0;
+  }
+}
+
+function setCutSubtitleSelected(subtitleId, selected) {
+  const id = String(subtitleId || "");
+  if (!id) return;
+  const selectedIds = new Set(state.selectedCutSubtitleIds || []);
+  if (selected) selectedIds.add(id);
+  else selectedIds.delete(id);
+  state.selectedCutSubtitleIds = [...selectedIds];
+  updateCutSubtitleSelectionState();
+  $("cutSubtitleList")?.querySelector(`[data-subtitle-id="${CSS.escape(id)}"]`)?.classList.toggle("selected", selected);
+}
+
+async function persistCutSubtitleMutation(previousSubtitles, successMessage) {
+  state.cutDirty = true;
+  invalidateWorkflowAfter("STEP_CUT");
+  syncProjectScenesFromSubtitles();
+  if (state.decorationProject) {
+    syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+  }
+  try {
+    await persistCurrentSubtitles({ allowEmpty: true });
+    renderCutPage();
+    setStatus(successMessage);
+  } catch (error) {
+    const subtitles = subtitleItems();
+    subtitles.splice(0, subtitles.length, ...previousSubtitles.map((subtitle) => ({ ...subtitle })));
+    syncProjectScenesFromSubtitles();
+    if (state.decorationProject) {
+      syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+    }
+    renderCutPage();
+    throw error;
+  }
+}
+
+async function deleteSelectedCutSubtitles() {
+  const selectedIds = selectedCutSubtitleIdSet();
+  if (!selectedIds.size) throw new Error("削除する字幕を選択してください");
+  const subtitles = subtitleItems();
+  const previous = subtitles.map((subtitle) => ({ ...subtitle }));
+  const firstIndex = subtitles.findIndex((subtitle) => selectedIds.has(String(subtitle.id || "")));
+  const remaining = subtitles.filter((subtitle) => !selectedIds.has(String(subtitle.id || "")));
+  subtitles.splice(0, subtitles.length, ...remaining);
+  state.selectedCutSubtitleIds = [];
+  const next = remaining[Math.min(Math.max(0, firstIndex), Math.max(0, remaining.length - 1))] || null;
+  state.selectedSubtitleId = next?.id || null;
+  state.loopSubtitleId = null;
+  await persistCutSubtitleMutation(previous, `字幕を${selectedIds.size}件削除しました`);
+}
+
+async function mergeSelectedCutSubtitles() {
+  const selected = selectedCutSubtitles();
+  if (selected.length < 2) throw new Error("連結する字幕を2件以上選択してください");
+  const subtitles = subtitleItems();
+  const previous = subtitles.map((subtitle) => ({ ...subtitle }));
+  const selectedIds = new Set(selected.map((subtitle) => String(subtitle.id || "")));
+  const orderedActive = activeSubtitles();
+  const selectedIndexes = orderedActive
+    .map((subtitle, index) => selectedIds.has(String(subtitle.id || "")) ? index : -1)
+    .filter((index) => index >= 0);
+  if (selectedIndexes.some((index, position) => position > 0 && index !== selectedIndexes[position - 1] + 1)) {
+    throw new Error("連結できるのは一覧上で連続している字幕です");
+  }
+  const primary = selected[0];
+  const outputStart = Math.min(...selected.map((subtitle) => Number(subtitle.output_start_sec) || 0));
+  const outputEnd = Math.max(...selected.map((subtitle) => Number(subtitle.output_end_sec) || 0));
+  const speakerLabels = selected.map((subtitle) => String(subtitle.speaker_label || subtitle.speaker_id || "").trim());
+  const multipleSpeakers = new Set(speakerLabels).size > 1;
+  primary.text = selected.map((subtitle, index) => {
+    const text = String(subtitle.text || "").trim();
+    return multipleSpeakers && speakerLabels[index] ? `${speakerLabels[index]}: ${text}` : text;
+  }).filter(Boolean).join("\n");
+  if (multipleSpeakers) {
+    primary.speaker_label = "";
+    primary.speaker_id = "";
+    primary.speaker_confidence = null;
+  }
+  setSubtitleManualOutputTime(primary, "start", outputStart);
+  setSubtitleManualOutputTime(primary, "end", outputEnd);
+  primary.enabled = selected.some((subtitle) => subtitle.enabled !== false);
+  const merged = subtitles.filter((subtitle) => subtitle === primary || !selectedIds.has(String(subtitle.id || "")));
+  subtitles.splice(0, subtitles.length, ...merged);
+  state.selectedCutSubtitleIds = [String(primary.id || "")].filter(Boolean);
+  state.selectedSubtitleId = primary.id || null;
+  state.loopSubtitleId = null;
+  await persistCutSubtitleMutation(previous, `字幕を${selected.length}件から1件へ連結しました`);
+}
+
+function updateCutTimelinePlayhead() {
+  const timeline = $("cutTimeline");
+  const media = cutPageVideo;
+  if (!timeline || !media) return;
+  const playhead = timeline.querySelector(".cut-timeline-playhead");
+  if (!playhead) return;
+  const { start, duration } = sourceRangeBounds();
+  const ratio = Math.max(0, Math.min(1, ((media.currentTime || start) - start) / duration));
+  playhead.style.left = `${ratio * 100}%`;
+}
+
+function beginCutSubtitleTextEdit(row, cell, subtitle) {
+  if (!row || !cell || cell.querySelector("textarea")) return;
+  const originalText = String(subtitle.text || "");
+  const editor = document.createElement("textarea");
+  editor.className = "cut-subtitle-text-editor";
+  editor.value = originalText;
+  editor.rows = Math.max(2, Math.min(6, originalText.split("\n").length + 1));
+  editor.setAttribute("aria-label", "字幕本文を編集");
+  cell.textContent = "";
+  cell.appendChild(editor);
+  let finished = false;
+
+  const restore = () => {
+    cell.textContent = subtitle.speaker_label
+      ? `${subtitle.speaker_label}: ${subtitle.text || ""}`
+      : (subtitle.text || "");
+  };
+  const cancel = () => {
+    if (finished) return;
+    finished = true;
+    restore();
+  };
+  const commit = async () => {
+    if (finished) return;
+    finished = true;
+    const nextText = editor.value.trim();
+    if (nextText === originalText) {
+      restore();
+      return;
+    }
+    subtitle.text = nextText;
+    state.cutDirty = true;
+    invalidateWorkflowAfter("STEP_CUT");
+    syncProjectScenesFromSubtitles();
+    if (state.decorationProject) {
+      syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+    }
+    try {
+      await persistCurrentSubtitles();
+      renderCutPage();
+      setStatus("カット編集の字幕本文を保存しました");
+    } catch (error) {
+      subtitle.text = originalText;
+      syncProjectScenesFromSubtitles();
+      if (state.decorationProject) {
+        syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+      }
+      setStatus(error.message || String(error), true);
+      restore();
+    }
+  };
+
+  editor.addEventListener("click", (event) => event.stopPropagation());
+  editor.addEventListener("dblclick", (event) => event.stopPropagation());
+  editor.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancel();
+      row.focus();
+    } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      editor.blur();
+    }
+  });
+  editor.addEventListener("blur", () => {
+    commit().catch((error) => setStatus(error.message || String(error), true));
+  });
+  editor.focus();
+  editor.select();
+}
+
+function automaticCutIntervals() {
+  const { start, end } = sourceRangeBounds();
+  const kept = (state.editPlan?.segments || [])
+    .filter((segment) => segment.enabled !== false)
+    .map((segment) => ({
+      src_start: Number(segment.source_start_sec) || start,
+      src_end: Number(segment.source_end_sec) || start,
+    }));
+  const removed = subtractIntervals([{ src_start: start, src_end: end }], kept);
+  return subtractIntervals(removed, state.manualCutSegments || []);
+}
+
+function renderCutTimeline() {
+  const timeline = $("cutTimeline");
+  if (!timeline) return;
+  timeline.textContent = "";
+  const { start, duration } = sourceRangeBounds();
+  for (const interval of automaticCutIntervals()) {
+    const range = document.createElement("div");
+    range.className = "cut-timeline-range automatic";
+    range.style.left = `${Math.max(0, ((interval.src_start - start) / duration) * 100)}%`;
+    range.style.width = `${Math.max(0.2, ((interval.src_end - interval.src_start) / duration) * 100)}%`;
+    range.title = `自動カット ${formatInterval(interval)}`;
+    timeline.appendChild(range);
+  }
+  for (const interval of normalizeIntervalList(state.manualCutSegments || [])) {
+    const range = document.createElement("div");
+    range.className = "cut-timeline-range";
+    range.style.left = `${Math.max(0, ((interval.src_start - start) / duration) * 100)}%`;
+    range.style.width = `${Math.max(0.2, ((interval.src_end - interval.src_start) / duration) * 100)}%`;
+    range.title = formatInterval(interval);
+    timeline.appendChild(range);
+  }
+  const playhead = document.createElement("div");
+  playhead.className = "cut-timeline-playhead";
+  timeline.appendChild(playhead);
+  updateCutTimelinePlayhead();
+}
+
+function renderCutPage() {
+  if ($("transcribePlanBtn")) {
+    $("transcribePlanBtn").textContent = state.editPlan
+      ? "現在の字幕からカット案を再作成"
+      : "現在の字幕からカット案を作成";
+  }
+  updateCutDraftState();
+  setCutSideTab(state.cutSideTab);
+  const intervals = normalizeIntervalList(state.manualCutSegments || []);
+  if (state.selectedCutIndex != null && Number(state.selectedCutIndex) >= intervals.length) state.selectedCutIndex = null;
+  updateSelectedCutState();
+  const automaticIntervals = automaticCutIntervals();
+  const count = $("cutCount");
+  if (count) count.textContent = `手動 ${intervals.length}件 / 自動 ${automaticIntervals.length}件`;
+  const intervalList = $("cutIntervalList");
+  if (intervalList) {
+    intervalList.textContent = "";
+    if (!automaticIntervals.length && !intervals.length) {
+      const empty = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 5;
+      cell.className = "muted";
+      cell.textContent = "カットはありません。";
+      empty.appendChild(cell);
+      intervalList.appendChild(empty);
+    }
+    automaticIntervals.forEach((interval, index) => {
+      const row = document.createElement("tr");
+      row.className = "cut-data-row automatic";
+      const values = ["自動", String(index + 1), `${fmtTime(interval.src_start)}\n${fmtTime(interval.src_end)}`, `${(interval.src_end - interval.src_start).toFixed(2)}秒`, "表示のみ"];
+      values.forEach((value, column) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        if (column === 2) cell.className = "cut-data-time";
+        row.appendChild(cell);
+      });
+      intervalList.appendChild(row);
+    });
+    intervals.forEach((interval, index) => {
+      const row = document.createElement("tr");
+      row.className = `cut-data-row manual${state.selectedCutIndex != null && Number(state.selectedCutIndex) === index ? " selected" : ""}`;
+      row.tabIndex = 0;
+      row.setAttribute("aria-selected", state.selectedCutIndex != null && Number(state.selectedCutIndex) === index ? "true" : "false");
+      const values = ["手動", String(index + 1), `${fmtTime(interval.src_start)}\n${fmtTime(interval.src_end)}`, `${(interval.src_end - interval.src_start).toFixed(2)}秒`];
+      values.forEach((value, column) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        if (column === 2) cell.className = "cut-data-time";
+        row.appendChild(cell);
+      });
+      const action = document.createElement("td");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "削除";
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        runStep("カット削除", () => deleteManualCut(index));
+      });
+      action.appendChild(remove);
+      row.appendChild(action);
+      row.addEventListener("click", () => {
+        state.selectedCutIndex = index;
+        if (cutPageVideo) cutPageVideo.currentTime = interval.src_start;
+        renderCutPage();
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          state.selectedCutIndex = index;
+          if (cutPageVideo) cutPageVideo.currentTime = interval.src_start;
+          renderCutPage();
+        }
+      });
+      intervalList.appendChild(row);
+    });
+  }
+
+  const subtitles = activeSubtitles();
+  const selectedSubtitleIds = selectedCutSubtitleIdSet();
+  const subtitleCount = $("cutSubtitleCount");
+  if (subtitleCount) subtitleCount.textContent = `${subtitles.length}件`;
+  const subtitleList = $("cutSubtitleList");
+  if (subtitleList) {
+    subtitleList.textContent = "";
+    subtitles.forEach((subtitle, index) => {
+      const row = document.createElement("tr");
+      const subtitleId = String(subtitle.id || `sub_cut_${index + 1}`);
+      if (!subtitle.id) subtitle.id = subtitleId;
+      row.className = `cut-subtitle-item${selectedSubtitleIds.has(subtitleId) ? " selected" : ""}`;
+      row.dataset.subtitleId = subtitle.id || "";
+      row.tabIndex = 0;
+      row.setAttribute("aria-selected", selectedSubtitleIds.has(subtitleId) ? "true" : "false");
+      const selection = document.createElement("td");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedSubtitleIds.has(subtitleId);
+      checkbox.setAttribute("aria-label", `字幕${index + 1}を選択`);
+      checkbox.addEventListener("click", (event) => event.stopPropagation());
+      checkbox.addEventListener("change", () => setCutSubtitleSelected(subtitleId, checkbox.checked));
+      selection.appendChild(checkbox);
+      const number = document.createElement("td");
+      number.textContent = String(index + 1);
+      const sourceTime = document.createElement("td");
+      sourceTime.className = "cut-subtitle-time";
+      const rangeStart = sourceRangeBounds().start;
+      const sourceStart = Number(subtitle.source_start_sec ?? (rangeStart + (Number(subtitle.range_relative_start_sec) || 0))) || 0;
+      const sourceEnd = Number(subtitle.source_end_sec ?? (rangeStart + (Number(subtitle.range_relative_end_sec) || 0))) || sourceStart;
+      sourceTime.textContent = `${fmtTime(sourceStart)} - ${fmtTime(sourceEnd)}`;
+      const outputTime = document.createElement("td");
+      outputTime.className = "cut-subtitle-time";
+      outputTime.textContent = `${fmtTime(subtitle.output_start_sec)} - ${fmtTime(subtitle.output_end_sec)}`;
+      const text = document.createElement("td");
+      text.className = "cut-subtitle-text";
+      text.title = "ダブルクリックで字幕本文を編集";
+      text.textContent = subtitle.speaker_label ? `${subtitle.speaker_label}: ${subtitle.text || ""}` : (subtitle.text || "");
+      row.append(selection, number, sourceTime, outputTime, text);
+      const seek = () => {
+        state.selectedSubtitleId = subtitle.id;
+        seekToSubtitle(subtitle);
+        updateCutActiveSubtitle(subtitle.id || "");
+      };
+      row.addEventListener("click", seek);
+      text.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        state.selectedSubtitleId = subtitle.id;
+        updateCutActiveSubtitle(subtitle.id || "");
+        beginCutSubtitleTextEdit(row, text, subtitle);
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          seek();
+        }
+      });
+      subtitleList.appendChild(row);
+    });
+  }
+  updateCutSubtitleSelectionState();
+  renderCutTimeline();
+  syncAllMirroredPreviews();
+  updateOverlay();
+}
+
+async function rebuildEditPlanAfterCut() {
+  await ensureEditPlanForCurrentProject({ force: true });
+  syncProjectScenesFromSubtitles();
+  await saveProjectScenes();
+  invalidateWorkflowAfter("STEP_CUT");
+  renderCutPage();
 }
 
 function drawTimeline() {
@@ -6925,6 +8847,8 @@ function setMode(mode) {
   $("renderedModeBtn").classList.toggle("active", mode === "rendered");
   if ($("subtitlePreviewSourceModeBtn")) $("subtitlePreviewSourceModeBtn").classList.toggle("active", mode === "source");
   if ($("subtitlePreviewPlannedModeBtn")) $("subtitlePreviewPlannedModeBtn").classList.toggle("active", mode === "planned");
+  if ($("cutSourceModeBtn")) $("cutSourceModeBtn").classList.toggle("active", mode === "source");
+  if ($("cutPlannedModeBtn")) $("cutPlannedModeBtn").classList.toggle("active", mode === "planned");
   const nextSrc = mode === "rendered" && state.previewUrl ? state.previewUrl : state.sourceVideoUrl;
   if (nextSrc) {
     for (const media of [video, ...mirroredPreviewVideos()].filter(Boolean)) {
@@ -6968,11 +8892,461 @@ function plannedPreviewTick() {
   }
 }
 
+function proposalSourceText(sourceIds) {
+  const wanted = new Set(sourceIds || []);
+  return subtitleItems().filter((sub) => wanted.has(sub.id)).map((sub) => sub.text || "").join(" / ");
+}
+
+function emptyGeminiKnowledgeBase() {
+  return {
+    schema_version: "1.0",
+    project_id: state.projectId,
+    work_title: state.projectName || "",
+    summary: "",
+    entries: [],
+    sources: [],
+  };
+}
+
+function geminiKnowledgeEntries() {
+  if (!state.geminiKnowledgeBase) state.geminiKnowledgeBase = emptyGeminiKnowledgeBase();
+  if (!Array.isArray(state.geminiKnowledgeBase.entries)) state.geminiKnowledgeBase.entries = [];
+  return state.geminiKnowledgeBase.entries;
+}
+
+function markGeminiKnowledgeEntryEdited(entry) {
+  entry.user_edited = true;
+}
+
+function renderGeminiKnowledgeDatabaseSelect() {
+  const select = $("geminiKnowledgeDatabaseSelect");
+  if (!select) return;
+  const linkedId = String(state.geminiKnowledgeBase?.linked_database_id || "");
+  select.textContent = "";
+  const local = document.createElement("option");
+  local.value = "";
+  local.textContent = "プロジェクト専用DB";
+  select.appendChild(local);
+  for (const database of state.geminiKnowledgeDatabases || []) {
+    const option = document.createElement("option");
+    option.value = database.database_id || "";
+    option.textContent = `${database.database_name || database.work_title || database.database_id}（${Number(database.entry_count) || 0}件）`;
+    select.appendChild(option);
+  }
+  select.value = linkedId;
+  const linked = (state.geminiKnowledgeDatabases || []).find((database) => database.database_id === linkedId);
+  const nameInput = $("geminiKnowledgeDatabaseName");
+  if (nameInput && document.activeElement !== nameInput) {
+    nameInput.value = linked?.database_name || state.geminiKnowledgeBase?.database_name || state.geminiKnowledgeBase?.work_title || "";
+  }
+  if ($("unlinkGeminiKnowledgeBtn")) $("unlinkGeminiKnowledgeBtn").disabled = !linkedId;
+  if ($("saveGeminiKnowledgeBtn")) $("saveGeminiKnowledgeBtn").textContent = linkedId ? "共通DBを更新" : "DBを保存";
+  if ($("registerGeminiKnowledgeBtn")) $("registerGeminiKnowledgeBtn").textContent = linkedId ? "共通DB名を更新" : "現在DBを共通登録";
+}
+
+function renderGeminiKnowledgeBase() {
+  const knowledge = state.geminiKnowledgeBase || emptyGeminiKnowledgeBase();
+  state.geminiKnowledgeBase = knowledge;
+  const entries = geminiKnowledgeEntries();
+  const activeCount = entries.filter((entry) => entry.enabled !== false).length;
+  if ($("geminiKnowledgeCount")) $("geminiKnowledgeCount").textContent = `${activeCount}/${entries.length}件`;
+  if ($("geminiKnowledgeStatus")) {
+    $("geminiKnowledgeStatus").textContent = entries.length
+      ? `${knowledge.storage_scope === "shared" ? "共通DB" : "プロジェクト専用"} / ${knowledge.updated_by === "gemini_web" ? "Web調査済み" : "保存済み"} / ${entries.length}件`
+      : "未作成";
+  }
+  renderGeminiKnowledgeDatabaseSelect();
+  const titleInput = $("geminiKnowledgeWorkTitle");
+  if (titleInput && document.activeElement !== titleInput) titleInput.value = knowledge.work_title || state.projectName || "";
+
+  const list = $("geminiKnowledgeList");
+  if (list) {
+    list.textContent = "";
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "settings-note";
+      empty.textContent = "作品名を入力してWeb検索するか、項目を手動追加してください。";
+      list.appendChild(empty);
+    }
+    entries.forEach((entry, index) => {
+      const row = document.createElement("div");
+      row.className = "gemini-knowledge-entry";
+
+      const typeField = document.createElement("label");
+      typeField.className = "gemini-knowledge-field";
+      typeField.textContent = "種別";
+      const type = document.createElement("select");
+      for (const [value, label] of [["character", "キャラクター"], ["term", "用語"]]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        type.appendChild(option);
+      }
+      type.value = entry.type === "character" ? "character" : "term";
+      type.addEventListener("change", () => {
+        entry.type = type.value;
+        markGeminiKnowledgeEntryEdited(entry);
+      });
+      const enabled = document.createElement("label");
+      enabled.className = "checkbox-label";
+      const enabledInput = document.createElement("input");
+      enabledInput.type = "checkbox";
+      enabledInput.checked = entry.enabled !== false;
+      enabledInput.addEventListener("change", () => {
+        entry.enabled = enabledInput.checked;
+        markGeminiKnowledgeEntryEdited(entry);
+        if ($("geminiKnowledgeCount")) {
+          const count = entries.filter((item) => item.enabled !== false).length;
+          $("geminiKnowledgeCount").textContent = `${count}/${entries.length}件`;
+        }
+      });
+      enabled.append(enabledInput, document.createTextNode("校正に使う"));
+      typeField.append(type, enabled);
+
+      const nameField = document.createElement("label");
+      nameField.className = "gemini-knowledge-field";
+      nameField.textContent = "正式表記";
+      const name = document.createElement("input");
+      name.type = "text";
+      name.value = entry.canonical_name || "";
+      name.addEventListener("input", () => {
+        entry.canonical_name = name.value;
+        markGeminiKnowledgeEntryEdited(entry);
+      });
+      nameField.appendChild(name);
+
+      const aliasesField = document.createElement("label");
+      aliasesField.className = "gemini-knowledge-field";
+      aliasesField.textContent = "読み・別名・誤認識候補（カンマ区切り）";
+      const aliases = document.createElement("textarea");
+      aliases.value = (entry.aliases || []).join(", ");
+      aliases.addEventListener("input", () => {
+        entry.aliases = aliases.value.split(",").map((value) => value.trim()).filter(Boolean);
+        markGeminiKnowledgeEntryEdited(entry);
+      });
+      aliasesField.appendChild(aliases);
+
+      const descriptionField = document.createElement("label");
+      descriptionField.className = "gemini-knowledge-field knowledge-description";
+      descriptionField.textContent = "説明・校正メモ";
+      const description = document.createElement("textarea");
+      description.value = entry.description || "";
+      description.addEventListener("input", () => {
+        entry.description = description.value;
+        markGeminiKnowledgeEntryEdited(entry);
+      });
+      descriptionField.appendChild(description);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "削除";
+      remove.addEventListener("click", () => {
+        entries.splice(index, 1);
+        renderGeminiKnowledgeBase();
+      });
+      row.append(typeField, nameField, aliasesField, descriptionField, remove);
+      list.appendChild(row);
+    });
+  }
+
+  const sources = $("geminiKnowledgeSources");
+  if (sources) {
+    sources.textContent = "";
+    const items = Array.isArray(knowledge.sources) ? knowledge.sources : [];
+    if (!items.length) {
+      sources.textContent = "出典なし";
+    } else {
+      for (const source of items) {
+        const link = document.createElement("a");
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = source.title || source.url;
+        link.title = source.url;
+        sources.appendChild(link);
+      }
+    }
+  }
+}
+
+async function loadGeminiKnowledgeBase() {
+  if (!state.projectId) return null;
+  await loadSharedGeminiKnowledgeBases();
+  const data = await api(`/api/projects/${encodeURIComponent(state.projectId)}/ai/knowledge-base`, { method: "GET" });
+  state.geminiKnowledgeBase = data.knowledge_base || emptyGeminiKnowledgeBase();
+  if (!state.geminiKnowledgeBase.work_title) state.geminiKnowledgeBase.work_title = state.projectName || "";
+  renderGeminiKnowledgeBase();
+  return state.geminiKnowledgeBase;
+}
+
+async function loadSharedGeminiKnowledgeBases() {
+  const data = await api("/api/ai/knowledge-bases", { method: "GET" });
+  state.geminiKnowledgeDatabases = Array.isArray(data.databases) ? data.databases : [];
+  renderGeminiKnowledgeDatabaseSelect();
+  return state.geminiKnowledgeDatabases;
+}
+
+async function linkGeminiKnowledgeBase(databaseId) {
+  if (!state.projectId) throw new Error("先にプロジェクトを作成してください");
+  const data = await api("/api/projects/ai/knowledge-base/link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, database_id: databaseId || null }),
+  });
+  state.geminiKnowledgeBase = data.knowledge_base || emptyGeminiKnowledgeBase();
+  await loadSharedGeminiKnowledgeBases();
+  renderGeminiKnowledgeBase();
+  return state.geminiKnowledgeBase;
+}
+
+async function registerGeminiKnowledgeBase() {
+  if (!state.projectId) throw new Error("先にプロジェクトを作成してください");
+  await saveGeminiKnowledgeBase();
+  const databaseName = $("geminiKnowledgeDatabaseName")?.value.trim()
+    || $("geminiKnowledgeWorkTitle")?.value.trim()
+    || "";
+  if (!databaseName) throw new Error("共通DB登録名を入力してください");
+  const data = await api("/api/ai/knowledge-bases/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, database_name: databaseName }),
+  });
+  state.geminiKnowledgeBase = data.knowledge_base || emptyGeminiKnowledgeBase();
+  await loadSharedGeminiKnowledgeBases();
+  renderGeminiKnowledgeBase();
+  return state.geminiKnowledgeBase;
+}
+
+async function saveGeminiKnowledgeBase() {
+  if (!state.projectId) throw new Error("先にプロジェクトを作成してください");
+  const knowledge = state.geminiKnowledgeBase || emptyGeminiKnowledgeBase();
+  knowledge.work_title = $("geminiKnowledgeWorkTitle")?.value.trim() || knowledge.work_title || "";
+  const data = await api("/api/projects/ai/knowledge-base", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, knowledge_base: knowledge }),
+  });
+  state.geminiKnowledgeBase = data.knowledge_base || knowledge;
+  renderGeminiKnowledgeBase();
+  return state.geminiKnowledgeBase;
+}
+
+async function researchGeminiKnowledgeBase() {
+  if (!state.projectId) throw new Error("先にプロジェクトを作成してください");
+  const workTitle = $("geminiKnowledgeWorkTitle")?.value.trim() || "";
+  if (!workTitle) throw new Error("検索する作品名を入力してください");
+  await saveGeminiKnowledgeBase();
+  const data = await api("/api/ai/gemini/research-knowledge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      work_title: workTitle,
+      model: $("geminiPageModel")?.value || state.geminiConfig?.model || "gemini-3.5-flash",
+      instructions: $("geminiKnowledgeResearchInstructions")?.value.trim() || "",
+    }),
+  });
+  state.geminiKnowledgeBase = data.knowledge_base || emptyGeminiKnowledgeBase();
+  renderGeminiKnowledgeBase();
+  return state.geminiKnowledgeBase;
+}
+
+const GEMINI_INSTRUCTION_TEMPLATES = Object.freeze({
+  character_names: `【キャラクター名・人物名の修正】
+音声と会話の文脈を確認し、次の対応表に従ってキャラクター名・人物名を修正してください。
+- 誤った表記: [現在の字幕表記] / 正しい表記: [キャラクター名]
+- 誤った表記: [現在の字幕表記] / 正しい表記: [キャラクター名]
+対応表にない人物名は、音声だけで断定できない場合に推測で変更しないでください。`,
+  word_replacements: `【単語・固有名詞の修正】
+次の置換ルールを字幕全文へ適用してください。前後の文脈が一致する箇所だけを修正してください。
+- 誤: [誤認識された単語] / 正: [正しい単語]
+- 誤: [誤認識された単語] / 正: [正しい単語]
+台詞の意味を変える意訳や、指定していない語句の推測置換はしないでください。`,
+  notation: `【表記の統一】
+字幕全体で次の表記ルールを統一してください。
+- [表記A] は [統一後の表記] にする
+- 数字・英字・記号: [希望するルール]
+- 句読点・三点リーダー: [希望するルール]
+発話内容そのものは変更しないでください。`,
+  readability: `【誤字修正・読みやすさの改善】
+音声と照合して誤認識、脱字、余分な繰り返しを修正してください。
+発話の意味と話し方を保ち、過度な要約や言い換えはしないでください。
+字幕本文には読みやすい句読点を付けてください。`,
+  segmenting: `【字幕の結合・分割】
+同じ発話が不自然に細分化されている字幕は結合し、長すぎる字幕は文意の切れ目で分割してください。
+発話開始・終了時刻は音声に合わせ、字幕同士を重複させないでください。
+別の話者や時間の離れた発話は結合しないでください。`,
+  chapters: `【チャプター提案】
+話題が明確に切り替わる地点だけをチャプター候補として提案してください。
+各チャプターには短いタイトルと要約を付け、対応する字幕IDを保持してください。
+細かすぎるチャプター分割は避けてください。`,
+  cuts: `【カット提案】
+本編と無関係な長い無言、明確な言い直し、重複発言だけをカット候補として提案してください。
+台詞、短い間、演出上必要な余韻、判断できない区間は削除候補にしないでください。
+理由と対象時刻を示し、字幕IDがある場合は保持してください。`,
+  cut_strict: `【厳密なカット提案】
+明確な言い直し、同じ内容の重複、収録上の失敗だけをremove候補にしてください。
+無言、相づち、呼吸、演出上の間は、それだけを理由に削除しないでください。
+確信がない区間はkeepにし、削除候補ごとに根拠を示してください。`,
+  cut_tempo: `【テンポ優先のカット提案】
+会話内容を失わない範囲で、長い無言、冗長な言い直し、同じ説明の繰り返しをremove候補にしてください。
+発話の前後には自然な余韻を残し、単語の途中や効果音の途中で切らないでください。`,
+  cut_highlights: `【見どころ・抽出候補】
+視聴者にとって重要、面白い、感情の動きが大きい区間をhighlightとして提案してください。
+前後の文脈が必要な場合は、その範囲も含めてください。不要区間を断定できない場合はremoveを提案しないでください。`,
+});
+
+function appendGeminiInstructionTemplate(task = "subtitle") {
+  const isCut = task === "cut";
+  const textarea = $(isCut ? "geminiCutInstructions" : "geminiInstructions");
+  const templateId = $(isCut ? "geminiCutInstructionTemplate" : "geminiInstructionTemplate")?.value || "";
+  const template = GEMINI_INSTRUCTION_TEMPLATES[templateId];
+  if (!textarea || !template) return false;
+  const current = textarea.value.trim();
+  textarea.value = current ? `${current}\n\n${template}` : template;
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  return true;
+}
+
+function addGeminiProposalRow(container, category, item, title, body, meta) {
+  const row = document.createElement("label");
+  row.className = "ai-proposal-item";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = category !== "cut" || item.action !== "remove";
+  checkbox.dataset.geminiCategory = category;
+  checkbox.dataset.geminiId = item.id || "";
+  const content = document.createElement("span");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const description = document.createElement("span");
+  description.textContent = body;
+  const details = document.createElement("span");
+  details.className = "ai-proposal-meta";
+  details.textContent = meta;
+  content.append(heading, description, details);
+  row.append(checkbox, content);
+  container.appendChild(row);
+}
+
+function renderGeminiProposal() {
+  const subtitleList = $("geminiSubtitleProposalList");
+  const cutList = $("geminiCutProposalList");
+  if (!subtitleList || !cutList) return;
+  subtitleList.textContent = "";
+  cutList.textContent = "";
+  const proposal = state.geminiProposal;
+  if ($("geminiSubtitleSummary")) $("geminiSubtitleSummary").textContent = proposal?.subtitle_summary || "字幕提案はまだありません。";
+  if ($("geminiCutSummary")) $("geminiCutSummary").textContent = proposal?.cut_summary || "カット提案はまだありません。";
+  if ($("geminiTranscript")) {
+    $("geminiTranscript").textContent = (proposal?.transcript_segments || []).map((item) =>
+      `${fmtTime(item.start_sec)} - ${fmtTime(item.end_sec)} ${item.speaker || ""}\n${item.text || ""}`
+    ).join("\n\n") || "未生成";
+  }
+  let subtitleCount = 0;
+  for (const item of proposal?.subtitle_edits || []) {
+    if (item.action === "keep") continue;
+    const before = proposalSourceText(item.source_subtitle_ids);
+    const after = (item.replacements || []).map((value) => value.text || "").join(" / ");
+    addGeminiProposalRow(subtitleList, "subtitle", item, `字幕 ${item.action}`, `${before} → ${after}`, `${item.reason || ""} / 信頼度 ${Math.round((Number(item.confidence) || 0) * 100)}%`);
+    subtitleCount += 1;
+  }
+  for (const item of proposal?.chapters || []) {
+    addGeminiProposalRow(subtitleList, "chapter", item, `チャプター: ${item.title || "名称未設定"}`, item.summary || "", (item.source_subtitle_ids || []).join(", "));
+    subtitleCount += 1;
+  }
+  let cutCount = 0;
+  for (const item of proposal?.cut_proposals || []) {
+    addGeminiProposalRow(cutList, "cut", item, `${item.action}: ${fmtTime(item.start_sec)} - ${fmtTime(item.end_sec)}`, item.reason || "", `信頼度 ${Math.round((Number(item.confidence) || 0) * 100)}%`);
+    cutCount += 1;
+  }
+  if (!subtitleCount) {
+    const empty = document.createElement("div");
+    empty.className = "settings-note";
+    empty.textContent = proposal ? "字幕の変更提案はありません。" : "字幕校正を送信すると、ここに提案が表示されます。";
+    subtitleList.appendChild(empty);
+  }
+  if (!cutCount) {
+    const empty = document.createElement("div");
+    empty.className = "settings-note";
+    empty.textContent = proposal ? "カット提案はありません。" : "カット提案を送信すると、ここに提案が表示されます。";
+    cutList.appendChild(empty);
+  }
+  if ($("geminiSubtitleProposalCount")) $("geminiSubtitleProposalCount").textContent = `${subtitleCount}件`;
+  if ($("geminiCutProposalCount")) $("geminiCutProposalCount").textContent = `${cutCount}件`;
+}
+
+async function loadGeminiProposal() {
+  if (!state.projectId) return null;
+  const data = await api(`/api/projects/${encodeURIComponent(state.projectId)}/ai/gemini`, { method: "GET" });
+  state.geminiProposal = data.proposal || null;
+  renderGeminiProposal();
+  return state.geminiProposal;
+}
+
+async function analyzeGeminiTask(task) {
+  if (!state.projectId) throw new Error("先にプロジェクトを作成してください");
+  const isCut = task === "cut";
+  const data = await api("/api/ai/gemini/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      model: $("geminiPageModel")?.value || state.geminiConfig?.model || "gemini-3.5-flash",
+      instructions: $(isCut ? "geminiCutInstructions" : "geminiInstructions")?.value || "",
+      task,
+    }),
+  });
+  state.geminiProposal = data.proposal || null;
+  renderGeminiProposal();
+  $("paths").textContent = data.proposal_path || "ai/gemini_proposal.json";
+  return data;
+}
+
+function selectedGeminiProposalIds(category) {
+  return Array.from(document.querySelectorAll(`[data-gemini-category="${category}"]:checked`)).map((input) => input.dataset.geminiId).filter(Boolean);
+}
+
+async function applySelectedGeminiProposal({ subtitle = true, cut = true, navigate = true } = {}) {
+  const subtitleEditIds = subtitle ? selectedGeminiProposalIds("subtitle") : [];
+  const chapterIds = subtitle ? selectedGeminiProposalIds("chapter") : [];
+  const cutIds = cut ? selectedGeminiProposalIds("cut") : [];
+  const selectedCuts = (state.geminiProposal?.cut_proposals || []).filter((item) => cutIds.includes(item.id) && item.action === "remove");
+  if (selectedCuts.length) {
+    state.manualCutSegments = normalizeIntervalList([
+      ...(state.manualCutSegments || []),
+      ...selectedCuts.map((item) => ({ start_sec: item.start_sec, end_sec: item.end_sec, source: "gemini", proposal_id: item.id })),
+    ]);
+    await rebuildEditPlanAfterCut();
+  }
+  const data = await api("/api/ai/gemini/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: state.projectId, subtitle_edit_ids: subtitleEditIds, chapter_ids: chapterIds, cut_ids: cutIds }),
+  });
+  state.editPlan = data.edit_plan || state.editPlan;
+  state.editPlanBuildSignature = editPlanRequestSignatureFromPlan(state.editPlan);
+  state.transcript = { ...(state.transcript || {}), subtitles: state.editPlan?.subtitles || subtitleItems() };
+  state.cutDirty = selectedCuts.length > 0;
+  renderSubtitles();
+  renderScenes();
+  renderCutPage();
+  if (navigate) {
+    markWorkflowCompleted("STEP_AI_SUBTITLE", { invalidateFrom: "STEP_CUT" });
+    setAppPage("cut");
+  } else {
+    setStatus(`${subtitle ? "字幕提案" : "カット提案"}を採用しました`);
+  }
+}
+
 function resetProjectRuntimeState() {
   state.projectId = null;
   state.projectName = "";
   state.sourceVideo = null;
   state.sourceVideoUrl = null;
+  state.selectedAudioPreviewUrl = null;
+  state.selectedAudioPreviewOffsetSec = 0;
   state.audioPath = null;
   state.transcript = null;
   state.silences = [];
@@ -6981,6 +9355,7 @@ function resetProjectRuntimeState() {
   state.editPlanBuildSignature = "";
   state.selectedSubtitleId = null;
   state.loopSubtitleId = null;
+  state.rangeTranscriptionProposal = null;
   state.mode = "source";
   state.editorView = "timeline";
   state.manualCutSegments = [];
@@ -6988,31 +9363,71 @@ function resetProjectRuntimeState() {
   state.waveformDrafts = {
     cut: { start: null, end: null },
   };
+  state.cutDraftStart = null;
+  state.selectedCutIndex = null;
+  state.selectedCutSubtitleIds = [];
+  state.cutSideTab = "cuts";
+  state.cutDirty = false;
   state.waveformLoopRange = null;
   state.previewUrl = null;
   state.decorationPreviewUrl = null;
+  state.lastExportResult = null;
   state.videoInfo = null;
   state.processingSummary = null;
+  state.geminiProposal = null;
+  state.geminiKnowledgeBase = null;
   state.videoInfoExpanded = false;
   state.projectSettings = {
     default_emotion_preset_id: "emotion_neutral",
     default_subtitle_style_preset_id: "subtitle_standard",
     output_profile: "mp4_compat",
     final_output_mode: "video_srt",
+    audio_stream_index: null,
+    transcription_mode: "hybrid",
+    subtitle_click_playback_mode: "jump",
+    ass_subtitle_defaults: { ...ASS_SUBTITLE_DEFAULTS },
   };
   state.projectScenes = [];
   state.decorationProject = null;
   state.decorationSelectionId = null;
   state.decorationEditTab = "text";
   state.frameSyncMode = "live";
+  workflowStore.replace(null, {});
+}
+
+function startNewProject() {
+  if (state.projectId) {
+    const proceed = window.confirm("現在の作業画面を閉じて新しいプロジェクトを始めますか？保存済みプロジェクトは削除されません。");
+    if (!proceed) return false;
+  }
+  for (const media of [video, subtitlePageVideo, cutPageVideo, $("decorationPreviewVideo"), selectedAudioTrackPreview].filter(Boolean)) {
+    media.pause();
+    media.removeAttribute("src");
+    media.removeAttribute("data-sync-src");
+    media.load();
+  }
+  resetProjectRuntimeState();
+  syncProjectSettingsForm();
+  if ($("videoFile")) $("videoFile").value = "";
+  if ($("projectName")) $("projectName").value = "";
+  if ($("videoInfo")) $("videoInfo").textContent = "未取得";
+  if ($("paths")) $("paths").textContent = "";
+  renderProjectLabel();
+  renderSubtitles();
+  renderScenes();
+  setProjectReady(false);
+  setAppPage("project");
+  setStatus("新しいプロジェクトを作成できます");
+  return true;
 }
 
 function applyLoadedProject(data) {
   state.projectId = data.project_id || state.projectId;
+  state.geminiKnowledgeBase = null;
   state.projectName = data.project_name || state.projectId || "";
   state.sourceVideo = data.source_video_path || data.source_video || state.sourceVideo;
   state.sourceVideoUrl = data.source_video_url || state.sourceVideoUrl;
-  state.projectSettings = data.ui_state || state.projectSettings;
+  state.projectSettings = { ...state.projectSettings, ...(data.ui_state || {}) };
   syncProjectSettingsForm();
   state.projectScenes = data.scenes || [];
   state.editPlan = data.edit_plan || null;
@@ -7020,6 +9435,10 @@ function applyLoadedProject(data) {
   state.manualCutSegments = data.edit_plan?.manual_cut_segments || data.manual_cut_segments || state.manualCutSegments || [];
   state.protectedSegments = data.edit_plan?.protected_segments || data.protected_segments || state.protectedSegments || [];
   state.editPlanBuildSignature = editPlanRequestSignatureFromPlan(state.editPlan);
+  state.cutDraftStart = null;
+  state.cutDirty = false;
+  state.lastExportResult = data.has_output ? { restored: true } : null;
+  state.decorationPreviewUrl = data.preview_video_url || null;
   if (!state.editPlan && data.subtitles?.length) {
     state.transcript = { subtitles: data.subtitles };
   }
@@ -7033,6 +9452,17 @@ function applyLoadedProject(data) {
   renderSubtitles();
   renderScenes();
   renderDecorationPage();
+  workflowStore.replace(data.workflow, {
+    projectReady: Boolean(state.projectId && state.sourceVideo),
+    transcriptReady: Boolean(data.has_transcript || data.edit_plan?.subtitles?.length || data.subtitles?.length),
+    editPlanReady: Boolean(data.has_edit_plan || state.editPlan),
+    aiSubtitleConfirmed: data.workflow?.stepStatus?.STEP_AI_SUBTITLE === "completed",
+    cutConfirmed: data.workflow?.stepStatus?.STEP_CUT === "completed",
+    subtitleConfirmed: data.workflow?.stepStatus?.STEP_SUBTITLE_EDIT === "completed",
+    decorationReady: Boolean(data.has_decoration),
+    previewReady: Boolean(data.has_preview),
+    outputReady: Boolean(data.has_output),
+  });
 }
 
 async function loadProjectById(projectId) {
@@ -7060,12 +9490,20 @@ async function loadProjectById(projectId) {
     body: JSON.stringify({ video_path: state.sourceVideo }),
   });
   state.videoInfo = probe;
+  renderVideoInfo();
+  if (parseAudioStreamIndex(data.ui_state?.audio_stream_index) === null && selectedAudioStreamIndex() !== null) {
+    await saveProjectSettings();
+  }
+  await configureSelectedAudioTrackPreview();
   restoreProjectSourceRange(probe.duration_sec);
   syncAllMirroredPreviews();
-  setAppPage("editor");
   setEditorView("timeline");
   drawTimeline();
   await loadDecorationProjectFromServer().catch(() => {});
+  await loadGeminiProposal().catch(() => {});
+  const resumePage = WORKFLOW_STEP_TO_PAGE[workflowStore.getState().currentStepId] || "editor";
+  setAppPage(resumePage);
+  await rememberLastProject(projectId);
   return data;
 }
 
@@ -7160,6 +9598,9 @@ function renderProjectListPage() {
         const ok = window.confirm(`プロジェクト「${project.project_name || project.project_id}」を削除しますか？`);
         if (!ok) return;
         await api(`/api/projects/${encodeURIComponent(project.project_id)}`, { method: "DELETE" });
+        if (state.appSettings?.last_project_id === project.project_id) {
+          await updateAppSettings({ last_project_id: null });
+        }
         if (state.projectId === project.project_id) {
           resetProjectRuntimeState();
           renderProjectLabel();
@@ -7197,9 +9638,18 @@ async function loadSelectedVideo() {
   state.projectName = created.project_name || projectName;
   state.sourceVideo = created.source_video;
   state.sourceVideoUrl = created.source_video_url;
-  state.projectSettings = created.ui_state || state.projectSettings;
+  state.projectSettings = { ...state.projectSettings, ...(created.ui_state || {}) };
   syncProjectSettingsForm();
   state.projectScenes = created.scenes || [];
+  workflowStore.replace(created.workflow, {
+    projectReady: true,
+    transcriptReady: false,
+    editPlanReady: false,
+    decorationReady: false,
+    previewReady: false,
+    outputReady: false,
+  });
+  markWorkflowCompleted("STEP_PROJECT");
   syncProjectNameInput(state.projectName);
   renderProjectLabel();
   video.src = state.sourceVideoUrl;
@@ -7209,6 +9659,8 @@ async function loadSelectedVideo() {
   const info = await api("/api/video/probe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_path: state.sourceVideo }) });
   state.videoInfo = info;
   renderVideoInfo();
+  await saveProjectSettings();
+  await configureSelectedAudioTrackPreview();
   await loadPresets().catch(() => {});
   $("endTime").value = fmtTime(info.duration_sec);
   setSourceRanges(buildSourceRanges(info.duration_sec, Number($("splitMinutes").value) || 20), 0);
@@ -7219,6 +9671,7 @@ async function loadSelectedVideo() {
   renderWaveformEditor();
   drawTimeline();
   await loadDecorationProjectFromServer().catch(() => {});
+  await rememberLastProject(state.projectId);
 }
 
 $("createProjectBtn").addEventListener("click", () => runStep("動画読み込み", loadSelectedVideo));
@@ -7228,11 +9681,16 @@ $("videoFile").addEventListener("change", () => {
     runStep("動画読み込み", loadSelectedVideo);
   }
 });
+$("newProjectBtn").addEventListener("click", startNewProject);
 $("projectListPageBtn").addEventListener("click", () => {
   setAppPage("projects");
   loadProjectList().catch((err) => setStatus(err.message || String(err), true));
 });
-$("projectListBackBtn").addEventListener("click", () => setAppPage("editor"));
+$("projectOpenListBtn").addEventListener("click", () => {
+  setAppPage("projects");
+  loadProjectList().catch((err) => setStatus(err.message || String(err), true));
+});
+$("projectListBackBtn").addEventListener("click", () => setAppPage(lastWorkflowPage));
 $("refreshProjectListBtn").addEventListener("click", () => loadProjectList().catch((err) => setStatus(err.message || String(err), true)));
 $("saveProjectBtn").addEventListener("click", () =>
   runStep("プロジェクト保存", async () => {
@@ -7253,6 +9711,23 @@ $("probeBtn").addEventListener("click", () =>
     const info = await api("/api/video/probe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_path: state.sourceVideo }) });
     state.videoInfo = info;
     renderVideoInfo();
+    await saveProjectSettings();
+    await configureSelectedAudioTrackPreview();
+  })
+);
+
+$("audioTrackSelect").addEventListener("change", () =>
+  runStep("音声トラック変更", async () => {
+    const audioStreamIndex = selectedAudioStreamIndex();
+    if (audioStreamIndex === null) throw new Error("使用する音声トラックを選択してください");
+    state.projectSettings = { ...(state.projectSettings || {}), audio_stream_index: audioStreamIndex };
+    state.audioPath = null;
+    state.silences = [];
+    invalidateWorkflowFrom("STEP_TRANSCRIBE");
+    await saveProjectSettings();
+    await configureSelectedAudioTrackPreview();
+    renderAudioTrackOptions();
+    setStatus("音声トラックを変更しました。字幕を再作成すると新しいトラックが使用されます");
   })
 );
 
@@ -7262,71 +9737,171 @@ $("extractBtn").addEventListener("click", () =>
   })
 );
 
-$("transcribeBtn").addEventListener("click", () =>
-    runStep($("useWhisperxAlignment")?.checked ? "文字起こし 精密補正" : "文字起こし", async () => {
-      await ensureAudioExtracted();
-      const data = await api("/api/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: state.projectId,
+async function transcribeAndDetectSilence() {
+  await ensureAudioExtracted();
+  const data = await api("/api/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      audio_path: state.audioPath,
+      language: $("language").value,
+      model: $("model").value,
+      ...audioSettings(),
+      engine: $("engine").value,
+    }),
+  });
+  const effectiveSubtitles = (Array.isArray(data.aligned_subtitles) && data.aligned_subtitles.length)
+    ? data.aligned_subtitles
+    : (data.subtitles || []);
+  state.transcript = {
+    subtitles: effectiveSubtitles,
+    raw_subtitles: data.raw_subtitles || data.subtitles || [],
+    aligned_subtitles: data.aligned_subtitles || [],
+    keep_segments: data.keep_segments || [],
+    manual_cut_segments: data.manual_cut_segments || [],
+    protected_segments: data.protected_segments || [],
+    processing_summary: data.processing_summary || null,
+  };
+  const defaultEmotion = $("defaultEmotionPreset")?.value || "neutral";
+  const defaultStyle = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
+  for (const sub of state.transcript.subtitles || []) {
+    if (!sub.emotion) sub.emotion = defaultEmotion;
+    if (!sub.subtitle_style_preset_id) sub.subtitle_style_preset_id = defaultStyle;
+  }
+  syncProjectScenesFromSubtitles();
+  state.manualCutSegments = data.manual_cut_segments || state.manualCutSegments || [];
+  state.protectedSegments = data.protected_segments || state.protectedSegments || [];
+  state.processingSummary = data.processing_summary || null;
+  $("paths").textContent = data.srt_path;
+  updateWaveformPreview(data.waveform_image_url, "生成済み");
+  const timing = audioTimingSettings();
+  const silenceData = await api("/api/silence/detect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      audio_path: state.audioPath,
+      threshold_db: timing.silence_threshold_db,
+      min_silence_duration: timing.min_silence_duration_sec,
+      compute_profile: $("computeProfile").value,
+    }),
+  });
+  state.silences = silenceData.silences || [];
+  state.processingSummary = {
+    ...(state.processingSummary || {}),
+    silence_detection: {
+      engine: "silencedetect",
+      status: "ok",
+      count: state.silences.length,
+      threshold_db: timing.silence_threshold_db,
+      min_silence_duration: timing.min_silence_duration_sec,
+    },
+  };
+  renderSubtitles();
+  renderVideoInfo();
+  saveProjectScenes().catch(() => {});
+  return data;
+}
+
+async function geminiTranscribeAndDetectSilence() {
+  await ensureAudioExtracted();
+  const data = await api("/api/ai/gemini/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      model: state.geminiConfig?.model || $("geminiPageModel")?.value || "gemini-3.5-flash",
+      language: $("language").value || "ja",
+    }),
+  });
+  state.transcript = {
+    ...data,
+    subtitles: data.subtitles || [],
+    raw_subtitles: data.raw_subtitles || data.subtitles || [],
+    aligned_subtitles: [],
+    processing_summary: { transcription: { engine: "gemini", model: data.model, status: "ok" } },
+  };
+  state.geminiProposal = data.proposal || null;
+  const timing = audioTimingSettings();
+  if (timing.detection_mode === "vad") {
+    const vad = await api("/api/vad/detect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: state.projectId,
         audio_path: state.audioPath,
-        language: $("language").value,
-          model: $("model").value,
-          ...audioSettings(),
-          engine: $("engine").value,
-        }),
-      });
-      const effectiveSubtitles = (Array.isArray(data.aligned_subtitles) && data.aligned_subtitles.length)
-        ? data.aligned_subtitles
-        : (data.subtitles || []);
-      state.transcript = {
-        subtitles: effectiveSubtitles,
-        raw_subtitles: data.raw_subtitles || data.subtitles || [],
-        aligned_subtitles: data.aligned_subtitles || [],
-        keep_segments: data.keep_segments || [],
-        manual_cut_segments: data.manual_cut_segments || [],
-        protected_segments: data.protected_segments || [],
-        processing_summary: data.processing_summary || null,
-      };
-      const defaultEmotion = $("defaultEmotionPreset")?.value || "neutral";
-      const defaultStyle = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
-      for (const sub of state.transcript.subtitles || []) {
-        if (!sub.emotion) sub.emotion = defaultEmotion;
-        if (!sub.subtitle_style_preset_id) sub.subtitle_style_preset_id = defaultStyle;
-      }
-      syncProjectScenesFromSubtitles();
-      state.manualCutSegments = data.manual_cut_segments || state.manualCutSegments || [];
-      state.protectedSegments = data.protected_segments || state.protectedSegments || [];
-      state.processingSummary = data.processing_summary || null;
-      $("paths").textContent = data.srt_path;
-      updateWaveformPreview(data.waveform_image_url, "生成済み");
-      const timing = audioTimingSettings();
-      const silenceData = await api("/api/silence/detect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: state.projectId,
-          audio_path: state.audioPath,
-          threshold_db: timing.silence_threshold_db,
-          min_silence_duration: timing.min_silence_duration_sec,
-          compute_profile: $("computeProfile").value,
-        }),
-      });
-    state.silences = silenceData.silences || [];
-    state.processingSummary = {
-      ...(state.processingSummary || {}),
-      silence_detection: {
-        engine: "silencedetect",
-        status: "ok",
-        count: state.silences.length,
-        threshold_db: timing.silence_threshold_db,
-        min_silence_duration: timing.min_silence_duration_sec,
-      },
-    };
+        vad_threshold: timing.vad_threshold,
+        min_speech_duration_sec: timing.min_speech_duration_sec,
+        min_silence_duration_sec: timing.min_silence_duration_sec,
+        speech_pad_sec: timing.speech_pad_sec,
+        merge_silence_gap_sec: timing.merge_silence_gap_sec,
+        compute_profile: $("computeProfile").value,
+      }),
+    });
+    state.transcript.vad_intervals = vad.speech_intervals || [];
+    state.transcript.speech_intervals = vad.speech_intervals || [];
+  }
+  const silenceData = await api("/api/silence/detect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      audio_path: state.audioPath,
+      threshold_db: timing.silence_threshold_db,
+      min_silence_duration: timing.min_silence_duration_sec,
+      compute_profile: $("computeProfile").value,
+    }),
+  });
+  state.silences = silenceData.silences || [];
+  state.processingSummary = state.transcript.processing_summary;
+  syncProjectScenesFromSubtitles();
+  renderSubtitles();
+  renderVideoInfo();
+  renderGeminiProposal();
+  saveProjectScenes().catch(() => {});
+  $("paths").textContent = data.srt_path || "subtitles/original.srt";
+  return data;
+}
+
+$("transcribeBtn").addEventListener("click", () =>
+  runStep(
+    $("transcriptionMode")?.value === "gemini" ? "Gemini文字起こし" : ($("useWhisperxAlignment")?.checked ? "文字起こし 精密補正" : "文字起こし"),
+    $("transcriptionMode")?.value === "gemini" ? geminiTranscribeAndDetectSilence : transcribeAndDetectSilence,
+  )
+);
+
+$("transcribeOnlyBtn").addEventListener("click", () =>
+  runStep("字幕だけ作成", async () => {
+    requireProject();
+    const mode = $("transcriptionMode")?.value || "hybrid";
+    if (mode === "gemini") await geminiTranscribeAndDetectSilence();
+    else await transcribeAndDetectSilence();
+    state.editPlan = null;
+    state.editPlanPath = null;
+    state.editPlanBuildSignature = "";
+    invalidateWorkflowFrom("STEP_TRANSCRIBE");
+    markWorkflowCompleted("STEP_TRANSCRIBE");
     renderSubtitles();
-    renderVideoInfo();
-    saveProjectScenes().catch(() => {});
+    updateTranscriptionModeUi();
+    $("paths").textContent = `字幕 ${subtitleItems().length}件 / カット案は未作成`;
+    state.projectSettings = { ...(state.projectSettings || {}), transcription_mode: mode };
+    saveProjectSettings().catch(() => {});
+    return state.transcript;
+  })
+);
+
+$("transcribePlanBtn").addEventListener("click", () =>
+  runStep("現在の字幕からカット案作成", async () => {
+    requireProject();
+    if (!subtitleItems().length) throw new Error("先に字幕作成工程で字幕を作成してください");
+    await ensureEditPlanForCurrentProject({ force: true });
+    const segmentCount = (state.editPlan?.segments || []).filter((segment) => segment.enabled !== false).length;
+    $("paths").textContent = `${state.editPlanPath || "edit_plan.json"} / 残す区間 ${segmentCount}件`;
+    markWorkflowCompleted("STEP_TRANSCRIBE");
+    if (($("transcriptionMode")?.value || state.projectSettings?.transcription_mode) === "local") markWorkflowCompleted("STEP_AI_SUBTITLE");
+    renderCutPage();
+    renderWorkflowState();
   })
 );
 
@@ -7351,22 +9926,44 @@ $("silenceBtn").addEventListener("click", () =>
   })
 );
 
-$("planBtn").addEventListener("click", () =>
-  runStep("カット案作成", async () => {
-    requireProject();
-    await ensureEditPlanForCurrentProject({ force: true });
-    const segmentCount = (state.editPlan?.segments || []).filter((seg) => seg.enabled !== false).length;
-    $("paths").textContent = `${state.editPlanPath || "edit_plan.json"} / 残す区間 ${segmentCount}件`;
-  })
-);
-
 $("saveSubtitlesBtn").addEventListener("click", () =>
   runStep("字幕保存", async () => {
     const data = await persistCurrentSubtitles();
     renderSubtitles();
     $("paths").textContent = data.srt_path || data.transcript_path;
+    markWorkflowCompleted("STEP_SUBTITLE_EDIT", { invalidateFrom: "STEP_DECORATION" });
+    setAppPage("decoration");
   })
 );
+
+$("setRangeTranscribeStartBtn")?.addEventListener("click", () => {
+  const current = currentSubtitleSourceRelativeTime();
+  $("rangeTranscribeStart").value = fmtTime(current);
+  clearRangeTranscriptionProposal();
+});
+
+$("setRangeTranscribeEndBtn")?.addEventListener("click", () => {
+  const current = currentSubtitleSourceRelativeTime();
+  $("rangeTranscribeEnd").value = fmtTime(current);
+  clearRangeTranscriptionProposal();
+});
+
+$("runRangeTranscribeBtn")?.addEventListener("click", () =>
+  runStep("指定区間の再文字起こし", requestRangeTranscription)
+);
+
+$("applyRangeTranscribeBtn")?.addEventListener("click", () =>
+  runStep("指定区間の字幕更新", applyRangeTranscriptionProposal)
+);
+
+$("cancelRangeTranscribeBtn")?.addEventListener("click", () => {
+  clearRangeTranscriptionProposal();
+  setStatus("再文字起こしの提案を破棄しました");
+});
+
+for (const id of ["rangeTranscribeStart", "rangeTranscribeEnd", "rangeTranscribeMode", "rangeTranscribePadding"]) {
+  $(id)?.addEventListener("change", clearRangeTranscriptionProposal);
+}
 
 $("previewRenderBtn").addEventListener("click", () =>
   runStep("仮出力", async () => {
@@ -7420,37 +10017,106 @@ async function prepareFinalExport(includeDecoration = false) {
   await saveProjectSettings().catch(() => {});
 }
 
+function createFinalExportSnapshot(outputProfile, mode) {
+  const range = currentRange();
+  return {
+    schemaVersion: "1.0.0",
+    projectId: state.projectId,
+    sourceVideo: state.sourceVideo,
+    sourceRange: { start_sec: range.start_sec, end_sec: range.end_sec },
+    editPlanSignature: state.editPlanBuildSignature || editPlanRequestSignatureFromPlan(state.editPlan),
+    subtitleCount: subtitleItems().length,
+    decorationRevision: Number(state.decorationProject?.revision || 0),
+    outputMode: mode,
+    outputProfile,
+    startedAt: new Date().toISOString(),
+  };
+}
+
 function selectedFinalOutputMode() {
   return $("finalOutputMode")?.value || state.projectSettings?.final_output_mode || "video_srt";
 }
 
-$("exportBtn").addEventListener("click", () =>
-  runStep("最終出力", async () => {
+function finalSubtitleExportOptions(mode) {
+  const options = {
+    video_srt: { subtitle_mode: "external", subtitle_format: "plain_ass", needs_decoration: false },
+    video_ass: { subtitle_mode: "external", subtitle_format: "ass", needs_decoration: true },
+    burn_srt: { subtitle_mode: "burn", subtitle_format: "plain_ass", needs_decoration: false },
+    decorated_burned: { subtitle_mode: "burn", subtitle_format: "ass", needs_decoration: true },
+    embed_srt: { subtitle_mode: "embed", subtitle_format: "plain_ass", needs_decoration: false },
+    embed_ass: { subtitle_mode: "embed", subtitle_format: "ass", needs_decoration: true },
+  };
+  return options[mode] || options.video_srt;
+}
+
+async function executeFinalExport(destinationMode) {
     const outputProfile = $("outputProfile")?.value || state.projectSettings?.output_profile || "mp4_compat";
     const mode = selectedFinalOutputMode();
-    await prepareFinalExport(mode !== "video_srt");
-    let data = null;
-    if (mode === "video_ass") {
-      data = await api("/api/decoration/export-ass-package", {
+    const subtitleOptions = finalSubtitleExportOptions(mode);
+    const outputDirectory = $("customOutputDirectory")?.value?.trim() || "";
+    const outputFilename = $("customOutputFilename")?.value?.trim() || "";
+    if (destinationMode === "custom" && !outputDirectory) throw new Error("出力先フォルダを指定してください");
+    if (destinationMode === "custom" && !outputFilename) throw new Error("出力ファイル名を指定してください");
+    await prepareFinalExport(subtitleOptions.needs_decoration);
+    const snapshot = createFinalExportSnapshot(outputProfile, mode);
+    snapshot.destinationMode = destinationMode;
+    workflowStore.setExecution("running", snapshot);
+    scheduleWorkflowSave();
+    try {
+      const data = await api("/api/export/final", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: state.projectId, output_profile: outputProfile }),
+        body: JSON.stringify({
+          project_id: state.projectId,
+          burn_subtitles: subtitleOptions.subtitle_mode === "burn",
+          subtitle_mode: subtitleOptions.subtitle_mode,
+          subtitle_format: subtitleOptions.subtitle_format,
+          output_profile: outputProfile,
+          destination_mode: destinationMode,
+          output_directory: destinationMode === "custom" ? outputDirectory : null,
+          output_filename: destinationMode === "custom" ? outputFilename : null,
+        }),
       });
-      $("paths").textContent = `${data.video_path} / ${data.ass_path}`;
-      setStatus("カット動画と装飾ASSを出力しました");
-      return;
+      const subtitlePath = data.subtitle_mode === "external"
+        ? (data.subtitle_path || data.ass_path || data.srt_path || "")
+        : "";
+      $("paths").textContent = [data.video_path, subtitlePath].filter(Boolean).join(" / ");
+      const statusByMode = {
+        video_srt: "カット動画と通常ASSを出力しました",
+        video_ass: "カット動画と装飾ASSを出力しました",
+        burn_srt: "通常ASSを焼き込んだ動画を出力しました",
+        decorated_burned: "装飾ASSを焼き込んだ動画を出力しました",
+        embed_srt: "通常ASS字幕トラックを埋め込んだMKVを出力しました",
+        embed_ass: "ASS字幕トラックを埋め込んだMKVを出力しました",
+      };
+      setStatus(statusByMode[mode] || "最終出力が完了しました");
+      state.lastExportResult = data;
+      workflowStore.setExecution("completed", snapshot);
+      markWorkflowCompleted("STEP_EXPORT");
+    } catch (error) {
+      workflowStore.setExecution("error", snapshot);
+      scheduleWorkflowSave();
+      throw error;
     }
-    data = await api("/api/export/final", {
+}
+
+$("exportCustomBtn")?.addEventListener("click", () =>
+  runStep("指定先へ最終出力", () => executeFinalExport("custom"))
+);
+
+$("exportBtn").addEventListener("click", () =>
+  runStep("設定どおりに最終出力", () => executeFinalExport("configured"))
+);
+
+$("openExportDirectoryBtn")?.addEventListener("click", () =>
+  runStep("保存フォルダを開く", async () => {
+    requireProject();
+    const data = await api("/api/system/open-export-directory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_id: state.projectId,
-        burn_subtitles: mode === "decorated_burned",
-        output_profile: outputProfile,
-      }),
+      body: JSON.stringify({ project_id: state.projectId }),
     });
-    $("paths").textContent = `${data.video_path} / ${data.srt_path}`;
-    setStatus(mode === "decorated_burned" ? "装飾を焼き込んだ動画を出力しました" : "カット動画とSRTを出力しました");
+    $("paths").textContent = data.directory || "";
   })
 );
 
@@ -7458,12 +10124,27 @@ $("setStartBtn").addEventListener("click", () => ($("startTime").value = fmtTime
 $("setEndBtn").addEventListener("click", () => ($("endTime").value = fmtTime(video.currentTime)));
 $("applyManualRangeBtn").addEventListener("click", () => {
   applyCurrentRangeToSelection();
+  invalidateWorkflowFrom("STEP_TRANSCRIBE");
   drawTimeline();
 });
-$("split10Btn").addEventListener("click", () => setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 10), 0));
-$("split15Btn").addEventListener("click", () => setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 15), 0));
-$("split20Btn").addEventListener("click", () => setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 20), 0));
-$("split30Btn").addEventListener("click", () => setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 30), 0));
+$("split10Btn").addEventListener("click", () => {
+  setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 10), 0);
+  invalidateWorkflowFrom("STEP_TRANSCRIBE");
+});
+$("split15Btn").addEventListener("click", () => {
+  setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 15), 0);
+  invalidateWorkflowFrom("STEP_TRANSCRIBE");
+});
+$("split20Btn").addEventListener("click", () => {
+  setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 20), 0);
+  invalidateWorkflowFrom("STEP_TRANSCRIBE");
+});
+$("split30Btn").addEventListener("click", () => {
+  setSourceRanges(buildSourceRanges(video.duration || parseTime($("endTime").value), 30), 0);
+  invalidateWorkflowFrom("STEP_TRANSCRIBE");
+});
+$("startTime").addEventListener("change", () => invalidateWorkflowFrom("STEP_TRANSCRIBE"));
+$("endTime").addEventListener("change", () => invalidateWorkflowFrom("STEP_TRANSCRIBE"));
 $("engine").addEventListener("change", () => {
   const current = $("model").value.trim();
   if ($("engine").value === "whisper.cpp" && (!current || current === "base" || current === "small")) $("model").value = "large-v3";
@@ -7471,13 +10152,87 @@ $("engine").addEventListener("change", () => {
   if ($("engine").value === "faster-whisper" && (!current || current === "large-v3")) $("model").value = "base";
 });
 $("voiceIsolationEnabled").addEventListener("change", syncAudioSettingsControls);
-$("audioTimingPreset").addEventListener("change", () => applyAudioTimingValues({ preset_id: $("audioTimingPreset").value }));
-$("applyAudioTimingPresetBtn").addEventListener("click", () => applyAudioTimingValues({ preset_id: $("audioTimingPreset").value }));
+async function selectLocalTranscriptionPreset(presetId) {
+  const normalized = normalizeAudioPresetId(presetId);
+  applyAudioTimingValues({ preset_id: normalized, local_profile_id: normalized });
+  if (state.projectId && (state.transcript || state.editPlan)) invalidateWorkflowFrom("STEP_TRANSCRIBE");
+  if (state.projectId) await saveProjectSettings();
+}
+$("localTranscriptionPreset").addEventListener("change", () =>
+  runStep("字幕プリセット変更", () => selectLocalTranscriptionPreset($("localTranscriptionPreset").value))
+);
+$("audioTimingPreset").addEventListener("change", () =>
+  runStep("字幕プリセット変更", () => selectLocalTranscriptionPreset($("audioTimingPreset").value))
+);
+$("applyAudioTimingPresetBtn").addEventListener("click", () =>
+  runStep("字幕プリセット適用", () => selectLocalTranscriptionPreset($("audioTimingPreset").value))
+);
 $("finalOutputMode")?.addEventListener("change", () => saveProjectSettings().catch(() => {}));
 $("outputProfile")?.addEventListener("change", () => saveProjectSettings().catch(() => {}));
+$("finalOutputMode")?.addEventListener("change", () => invalidateWorkflowFrom("STEP_EXPORT"));
+$("outputProfile")?.addEventListener("change", () => invalidateWorkflowFrom("STEP_EXPORT"));
+const transcriptionSettingIds = [
+  "transcriptionMode", "computeProfile", "engine", "model", "language", "audioTimingPreset", "localTranscriptionPreset", "useVad",
+  "voiceIsolationEnabled", "useIsolatedVoiceForVad", "useIsolatedVoiceForWhisper",
+  "alignTimestamps", "useWhisperxAlignment", "vadThreshold", "minSpeechDurationSec",
+  "minSilenceDurationSec", "vadMinSilenceDurationSec", "speechPadSec", "preMarginSec",
+  "postMarginSec", "mergeSilenceGapSec", "silenceThresholdDb", "minKeepSegmentDuration",
+];
+for (const id of transcriptionSettingIds) {
+  $(id)?.addEventListener("change", () => {
+    if (state.projectId && (state.transcript || state.editPlan)) invalidateWorkflowFrom("STEP_TRANSCRIBE");
+  });
+}
+$("transcriptionMode")?.addEventListener("change", () => {
+  state.projectSettings = { ...(state.projectSettings || {}), transcription_mode: $("transcriptionMode").value };
+  updateTranscriptionModeUi();
+  if (state.projectId) saveProjectSettings().catch(() => {});
+});
+$("subtitleClickPlaybackMode")?.addEventListener("change", () => {
+  const mode = $("subtitleClickPlaybackMode").value === "loop" ? "loop" : "jump";
+  state.projectSettings = { ...(state.projectSettings || {}), subtitle_click_playback_mode: mode };
+  if (mode === "jump") state.loopSubtitleId = null;
+  if (state.projectId) saveProjectSettings().catch(() => {});
+});
+function updateProjectAssSubtitleDefaultsFromForm() {
+  state.projectSettings = { ...(state.projectSettings || {}), ass_subtitle_defaults: assSubtitleStyleFromForm() };
+  updateOverlay();
+  if (state.projectId) {
+    invalidateWorkflowAfter("STEP_SUBTITLE_EDIT");
+    saveProjectSettings().catch(() => {});
+  }
+}
+$("applyAssSubtitlePresetBtn")?.addEventListener("click", () => {
+  const style = resolveAssSubtitlePreset($("assSubtitlePreset")?.value || "ass_standard");
+  applyAssSubtitleStyleToForm(style);
+  updateProjectAssSubtitleDefaultsFromForm();
+});
+$("resetAssSubtitleDefaultsBtn")?.addEventListener("click", () => {
+  const style = resolveAssSubtitlePreset("ass_standard");
+  applyAssSubtitleStyleToForm(style);
+  updateProjectAssSubtitleDefaultsFromForm();
+});
+$("assSubtitlePreset")?.addEventListener("change", () => updateAssFontAvailabilityStatus($("assSubtitlePreset").value));
+const assSubtitleSettingIds = [
+  "subtitleFontName", "subtitleFontSize", "assSubtitlePrimaryColor", "assSubtitleOutlineColor",
+  "subtitleOutlineWidth", "assSubtitleShadowDepth", "assSubtitleBold", "assSubtitleItalic",
+  "assSubtitleAlignment", "assSubtitleMarginL", "assSubtitleMarginR", "assSubtitleMarginV", "assSubtitleSpacing",
+];
+for (const id of assSubtitleSettingIds) {
+  $(id)?.addEventListener("change", () => {
+    updateProjectAssSubtitleDefaultsFromForm();
+  });
+}
 $("sourceModeBtn").addEventListener("click", () => setMode("source"));
 $("plannedModeBtn").addEventListener("click", () => setMode("planned"));
 $("renderedModeBtn").addEventListener("click", () => setMode("rendered"));
+$("previewGeneratedSubtitlesBtn").addEventListener("click", () => {
+  try {
+    previewGeneratedSubtitles();
+  } catch (error) {
+    setStatus(error.message || String(error), true);
+  }
+});
 $("subtitlePreviewSourceModeBtn").addEventListener("click", () => setMode("source"));
 $("subtitlePreviewPlannedModeBtn").addEventListener("click", () =>
   runStep("字幕プレビュー カット案再生", async () => {
@@ -7485,12 +10240,84 @@ $("subtitlePreviewPlannedModeBtn").addEventListener("click", () =>
     setMode("planned");
   })
 );
+$("projectPageBtn").addEventListener("click", () => setAppPage("project"));
 $("editorPageBtn").addEventListener("click", () => setAppPage("editor"));
+$("aiSubtitlePageBtn").addEventListener("click", () => setAppPage("aiSubtitle"));
+$("cutPageBtn").addEventListener("click", () => setAppPage("cut"));
 $("subtitlePageBtn").addEventListener("click", () => setAppPage("subtitles"));
 $("settingsPageBtn").addEventListener("click", () => setAppPage("settings"));
 $("decorationPageBtn").addEventListener("click", () => setAppPage("decoration"));
 $("previewCheckPageBtn").addEventListener("click", () => setAppPage("previewCheck"));
-$("subtitlePageBackBtn").addEventListener("click", () => setAppPage("editor"));
+$("exportPageBtn").addEventListener("click", () => setAppPage("export"));
+$("exportBackBtn").addEventListener("click", () => setAppPage("previewCheck"));
+$("cutPageBackBtn").addEventListener("click", () => setAppPage("aiSubtitle"));
+$("aiSubtitleBackBtn").addEventListener("click", () => setAppPage("editor"));
+$("aiSubtitleSkipBtn").addEventListener("click", () => {
+  markWorkflowCompleted("STEP_AI_SUBTITLE");
+  setAppPage("cut");
+});
+$("researchGeminiKnowledgeBtn").addEventListener("click", () =>
+  runStep("作品情報Web調査", researchGeminiKnowledgeBase)
+);
+$("linkGeminiKnowledgeBtn").addEventListener("click", () =>
+  runStep("共通作品DB紐付け", async () => {
+    const databaseId = $("geminiKnowledgeDatabaseSelect")?.value || "";
+    if (!databaseId) throw new Error("紐付ける共通作品DBを選択してください");
+    return linkGeminiKnowledgeBase(databaseId);
+  })
+);
+$("unlinkGeminiKnowledgeBtn").addEventListener("click", () =>
+  runStep("作品DB紐付け解除", () => linkGeminiKnowledgeBase(null))
+);
+$("registerGeminiKnowledgeBtn").addEventListener("click", () =>
+  runStep("共通作品DB登録", registerGeminiKnowledgeBase)
+);
+$("saveGeminiKnowledgeBtn").addEventListener("click", () =>
+  runStep("キャラクター・用語DB保存", saveGeminiKnowledgeBase)
+);
+$("addGeminiKnowledgeEntryBtn").addEventListener("click", () => {
+  const entries = geminiKnowledgeEntries();
+  entries.push({
+    id: `kb_manual_${Date.now()}`,
+    type: "character",
+    canonical_name: "",
+    aliases: [],
+    description: "",
+    source_urls: [],
+    confidence: 1,
+    enabled: true,
+    origin: "manual",
+    user_edited: true,
+  });
+  renderGeminiKnowledgeBase();
+  $("geminiKnowledgeDetails").open = true;
+});
+$("addGeminiInstructionTemplateBtn").addEventListener("click", () => {
+  if (appendGeminiInstructionTemplate("subtitle")) setStatus("字幕校正の指示テンプレートを追加しました");
+});
+$("clearGeminiInstructionsBtn").addEventListener("click", () => {
+  $("geminiInstructions").value = "";
+  $("geminiInstructions").focus();
+  setStatus("Geminiへの指示文をクリアしました");
+});
+$("addGeminiCutInstructionTemplateBtn").addEventListener("click", () => {
+  if (appendGeminiInstructionTemplate("cut")) setStatus("カットの指示テンプレートを追加しました");
+});
+$("clearGeminiCutInstructionsBtn").addEventListener("click", () => {
+  $("geminiCutInstructions").value = "";
+  $("geminiCutInstructions").focus();
+  setStatus("カットへの指示文をクリアしました");
+});
+$("geminiAnalyzeBtn").addEventListener("click", () => runStep("Gemini字幕校正", () => analyzeGeminiTask("subtitle")));
+$("geminiCutAnalyzeBtn").addEventListener("click", () => runStep("Geminiカット提案", () => analyzeGeminiTask("cut")));
+$("applyGeminiSubtitleBtn").addEventListener("click", () =>
+  runStep("Gemini字幕提案反映", () => applySelectedGeminiProposal({ subtitle: true, cut: false, navigate: false }))
+);
+$("applyGeminiCutBtn").addEventListener("click", () =>
+  runStep("Geminiカット提案反映", () => applySelectedGeminiProposal({ subtitle: false, cut: true, navigate: false }))
+);
+$("aiSubtitleConfirmBtn").addEventListener("click", () => runStep("Gemini提案反映", applySelectedGeminiProposal));
+$("subtitlePageBackBtn").addEventListener("click", () => setAppPage("cut"));
 $("subtitleSyncScenesBtn").addEventListener("click", () => {
   syncProjectScenesFromSubtitles();
   saveProjectScenes().catch(() => {});
@@ -7501,9 +10328,185 @@ $("extendSubtitleTimesBtn")?.addEventListener("click", () => {
   const count = extendAllSubtitleDisplayTimes(0.5);
   setStatus(count ? `全字幕 ${count} 件を前後0.5秒延長しました。確定するには字幕を保存してください。` : "延長する字幕がありません", !count);
 });
-$("settingsBackBtn").addEventListener("click", () => setAppPage("editor"));
-$("decorationBackBtn").addEventListener("click", () => setAppPage("editor"));
+$("settingsBackBtn").addEventListener("click", () => setAppPage(lastWorkflowPage));
+$("saveAppSettingsBtn").addEventListener("click", () =>
+  runStep("起動設定保存", async () => {
+    await updateAppSettings({ startup_mode: $("startupMode").value });
+    setStatus("起動時の動作を保存しました。次回起動から反映されます");
+  })
+);
+$("chooseDefaultOutputDirectoryBtn")?.addEventListener("click", () =>
+  runStep("出力先選択", async () => {
+    const selected = await selectOutputDirectory("defaultOutputDirectory");
+    if (selected) await saveDefaultOutputSettings();
+  })
+);
+$("saveDefaultOutputSettingsBtn")?.addEventListener("click", () =>
+  runStep("出力先設定保存", saveDefaultOutputSettings)
+);
+$("clearDefaultOutputDirectoryBtn")?.addEventListener("click", () =>
+  runStep("出力先設定解除", async () => {
+    $("defaultOutputDirectory").value = "";
+    await saveDefaultOutputSettings();
+  })
+);
+$("chooseCustomOutputDirectoryBtn")?.addEventListener("click", () =>
+  runStep("今回の出力先選択", () => selectOutputDirectory("customOutputDirectory"))
+);
+$("saveGeminiSettingsBtn").addEventListener("click", () =>
+  runStep("Gemini設定保存", async () => {
+    const result = await saveGeminiSettings(false);
+    if (!result.configured) throw new Error("APIキーを入力してください");
+    return result;
+  })
+);
+$("clearGeminiKeyBtn").addEventListener("click", () => runStep("Geminiキー削除", () => saveGeminiSettings(true)));
+$("refreshGeminiModelsBtn").addEventListener("click", () =>
+  runStep("Geminiモデル確認", () => loadGeminiModels(true))
+);
+$("geminiPageModel").addEventListener("change", () => {
+  if ($("geminiModel")) $("geminiModel").value = $("geminiPageModel").value;
+  runStep("Geminiモデル切替", () => saveGeminiSettings(false));
+});
+$("geminiModel").addEventListener("change", () => {
+  if ($("geminiPageModel")) $("geminiPageModel").value = $("geminiModel").value;
+});
+for (const id of ["geminiSpeakerLabelsEnabled", "geminiSrtTimingPriority"]) {
+  $(id)?.addEventListener("change", () =>
+    runStep("Gemini設定保存", async () => {
+      await saveGeminiSettings(false);
+      setStatus("Gemini文字起こし設定を保存しました。次回の文字起こしから反映されます");
+    })
+  );
+}
+$("decorationBackBtn").addEventListener("click", () => setAppPage("subtitles"));
 $("previewCheckBackBtn").addEventListener("click", () => setAppPage("decoration"));
+$("previewToExportBtn").addEventListener("click", () => setAppPage("export"));
+$("cutSourceModeBtn").addEventListener("click", () => {
+  setMode("source");
+  renderCutPage();
+});
+$("cutListTabBtn").addEventListener("click", () => setCutSideTab("cuts"));
+$("cutSubtitleTabBtn").addEventListener("click", () => setCutSideTab("subtitles"));
+$("cutSubtitleSelectAll")?.addEventListener("change", () => {
+  state.selectedCutSubtitleIds = $("cutSubtitleSelectAll").checked
+    ? activeSubtitles().map((subtitle) => String(subtitle.id || "")).filter(Boolean)
+    : [];
+  renderCutPage();
+});
+$("clearCutSubtitleSelectionBtn")?.addEventListener("click", () => {
+  state.selectedCutSubtitleIds = [];
+  renderCutPage();
+});
+$("deleteCutSubtitlesBtn")?.addEventListener("click", () =>
+  runStep("選択字幕削除", deleteSelectedCutSubtitles)
+);
+$("mergeCutSubtitlesBtn")?.addEventListener("click", () =>
+  runStep("選択字幕連結", mergeSelectedCutSubtitles)
+);
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Delete" || event.repeat) return;
+  if (state.appPage !== "cut") return;
+  const target = event.target;
+  if (target instanceof HTMLElement && (
+    target.isContentEditable ||
+    Boolean(target.closest("textarea, select, input:not([type='checkbox']), [contenteditable='true']"))
+  )) return;
+  if (state.cutSideTab === "subtitles" && selectedCutSubtitleIdSet().size > 0) {
+    event.preventDefault();
+    runStep("選択字幕削除", deleteSelectedCutSubtitles);
+    return;
+  }
+  if (state.cutSideTab !== "cuts" || state.selectedCutIndex == null) return;
+  event.preventDefault();
+  runStep("選択カット削除", () => deleteManualCut(state.selectedCutIndex));
+});
+$("cutPlannedModeBtn").addEventListener("click", () =>
+  runStep("カット後の簡易再生", async () => {
+    await ensureEditPlanForCurrentProject();
+    setMode("planned");
+    renderCutPage();
+    cutPageVideo?.play().catch(() => {});
+  })
+);
+$("cutDraftClearBtn").addEventListener("click", () => {
+  state.cutDraftStart = null;
+  updateCutDraftState();
+});
+$("cutToggleBtn").addEventListener("click", () => {
+  if (state.cutDraftStart == null) {
+    state.cutDraftStart = cutPageVideo?.currentTime || 0;
+    updateCutDraftState();
+    setStatus(`カット開始位置を ${fmtTime(state.cutDraftStart)} に設定しました`);
+    return;
+  }
+  runStep("カット区間追加", async () => {
+    if (state.cutDraftStart == null) throw new Error("先にカット開始位置を指定してください");
+    const end = cutPageVideo?.currentTime || 0;
+    const result = commitWaveformSelection(state.cutDraftStart, end);
+    state.cutDraftStart = null;
+    updateCutDraftState();
+    if (!result.ok) {
+      if (result.reason === "fully_protected") throw new Error("指定区間は保護区間のためカットできません");
+      throw new Error("カット区間が短すぎます");
+    }
+    state.cutDirty = true;
+    await rebuildEditPlanAfterCut();
+  });
+});
+$("setSelectedCutStartBtn").addEventListener("click", () =>
+  runStep("カット開始時刻変更", () => updateSelectedCutBoundary("start"))
+);
+$("setSelectedCutEndBtn").addEventListener("click", () =>
+  runStep("カット終了時刻変更", () => updateSelectedCutBoundary("end"))
+);
+$("cutUndoLastBtn").addEventListener("click", () =>
+  runStep("カット取消", async () => {
+    if (!state.manualCutSegments.length) throw new Error("取り消すカットがありません");
+    state.manualCutSegments.pop();
+    state.selectedCutIndex = null;
+    state.cutDirty = true;
+    await rebuildEditPlanAfterCut();
+  })
+);
+$("cutConfirmBtn").addEventListener("click", () =>
+  runStep("カット確定", async () => {
+    await ensureEditPlanForCurrentProject();
+    if (subtitleItems().length) await persistCurrentSubtitles();
+    await saveProjectScenes();
+    if (state.cutDirty) {
+      markWorkflowCompleted("STEP_CUT", { invalidateFrom: "STEP_SUBTITLE_EDIT" });
+    } else {
+      markWorkflowCompleted("STEP_CUT");
+    }
+    state.cutDirty = false;
+    setAppPage("subtitles");
+  })
+);
+$("workflowNextBtn").addEventListener("click", () => {
+  const action = workflowPrimaryAction(workflowStore.getState().currentStepId);
+  if (action.targetPage) {
+    setAppPage(action.targetPage);
+    return;
+  }
+  const control = action.controlId ? $(action.controlId) : null;
+  if (control?.type === "file") control.click();
+  else control?.click();
+});
+$("subtitlePage")?.addEventListener("input", (event) => {
+  if (event.target.closest("#subtitleListPage")) invalidateWorkflowAfter("STEP_SUBTITLE_EDIT");
+});
+$("decorationPage")?.addEventListener("input", () => invalidateWorkflowAfter("STEP_DECORATION"));
+$("decorationPage")?.addEventListener("change", () => invalidateWorkflowAfter("STEP_DECORATION"));
+$("decorationPage")?.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const nonEditingActions = new Set([
+    "saveDecorationBtn", "decorationToPreviewBtn", "buildDecorationAssBtn",
+    "exportDecorationAssPackageBtn", "exportDecorationJsonBtn", "decorationBackBtn",
+  ]);
+  if (!nonEditingActions.has(button.id)) window.queueMicrotask(() => invalidateWorkflowAfter("STEP_DECORATION"));
+});
 $("videoInfoToggleBtn").addEventListener("click", () => {
   state.videoInfoExpanded = !state.videoInfoExpanded;
   renderVideoInfo();
@@ -7531,6 +10534,8 @@ $("waveformClearBtn").addEventListener("click", () => {
 });
 $("waveformDeleteLastBtn").addEventListener("click", () => {
   state.manualCutSegments.pop();
+  state.cutDirty = true;
+  invalidateWorkflowAfter("STEP_CUT");
   renderWaveformEditor();
 });
 $("waveformCutStartBtn").addEventListener("click", () => setWaveformDraftPoint("start"));
@@ -7621,6 +10626,15 @@ $("saveDecorationBtn").addEventListener("click", () =>
     setStatus("デコレーションを保存しました");
   })
 );
+$("decorationToPreviewBtn").addEventListener("click", () =>
+  runStep("デコレーション確定", async () => {
+    if (!state.projectId) throw new Error("先にプロジェクトを作成してください");
+    if (!state.decorationProject) await reloadDecorationFromSource();
+    await saveDecorationProject();
+    markWorkflowCompleted("STEP_DECORATION", { invalidateFrom: "STEP_PREVIEW" });
+    setAppPage("previewCheck");
+  })
+);
 $("exportDecorationJsonBtn").addEventListener("click", () =>
   runStep("JSON出力", async () => {
     if (!state.projectId) throw new Error("先に動画を読み込んでください");
@@ -7674,6 +10688,7 @@ $("renderDecorationPreviewBtn").addEventListener("click", () =>
     state.decorationPreviewUrl = `${data.video_url}?t=${Date.now()}`;
     $("paths").textContent = data.video_path;
     renderDecorationPage();
+    markWorkflowCompleted("STEP_PREVIEW", { invalidateFrom: "STEP_EXPORT" });
     setAppPage("previewCheck");
     playDecorationPreviewVideo();
     setStatus("先頭15秒の480p点検プレビューを作成しました");
@@ -7701,6 +10716,7 @@ $("renderCurrentScenePreviewBtn").addEventListener("click", () =>
     state.decorationPreviewUrl = `${data.video_url}?t=${Date.now()}`;
     $("paths").textContent = data.video_path;
     renderDecorationPage();
+    markWorkflowCompleted("STEP_PREVIEW", { invalidateFrom: "STEP_EXPORT" });
     setAppPage("previewCheck");
     playDecorationPreviewVideo();
     setStatus(`現在字幕の480p点検プレビューを作成しました: ${windowInfo.label}`);
@@ -7719,6 +10735,7 @@ $("openMpvPreviewBtn").addEventListener("click", () =>
     state.decorationPreviewUrl = `${data.video_url}?t=${Date.now()}`;
     $("paths").textContent = data.video_path;
     renderDecorationPage();
+    markWorkflowCompleted("STEP_PREVIEW", { invalidateFrom: "STEP_EXPORT" });
     setAppPage("previewCheck");
     playDecorationPreviewVideo();
     setStatus("240p/3fpsの軽量プレビューを作成しました");
@@ -7789,19 +10806,22 @@ $("waveformStage").addEventListener("click", (event) => {
 video.addEventListener("timeupdate", updateOverlay);
 video.addEventListener("timeupdate", syncAllMirroredPreviews);
 video.addEventListener("loadedmetadata", drawTimeline);
+video.addEventListener("loadedmetadata", updateOverlay);
 video.addEventListener("loadedmetadata", syncAllMirroredPreviews);
 video.addEventListener("play", syncAllMirroredPreviews);
 video.addEventListener("pause", syncAllMirroredPreviews);
 video.addEventListener("seeked", syncAllMirroredPreviews);
+window.addEventListener("resize", updateOverlay);
 video.addEventListener("ratechange", syncAllMirroredPreviews);
 setInterval(plannedPreviewTick, 60);
 setInterval(loopSubtitleTick, 50);
 setInterval(waveformLoopTick, 50);
-setAppPage("editor");
-syncAudioSettingsControls();
-syncAudioSettingsControls();
+setAppPage("project");
+applyAudioTimingValues({ preset_id: "normal", local_profile_id: "normal" }, { silent: true });
 startBrowserHeartbeat();
 window.addEventListener("pagehide", sendBrowserCloseSignal);
 window.addEventListener("beforeunload", sendBrowserCloseSignal);
 loadPresets().catch(() => {});
+loadGeminiSettings().catch(() => {});
+initializeStartupProject().catch((error) => setStatus(error.message || String(error), true));
 
