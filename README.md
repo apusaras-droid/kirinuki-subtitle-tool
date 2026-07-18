@@ -176,6 +176,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\make-release.ps1
 
 SRTは文字起こし・編集互換用の内部形式として保持します。通常の配布字幕はASSを標準とし、外部ASS、動画への焼き込み、MKVへのASS字幕トラック埋め込みを選択できます。装飾を含めない通常ASSと、デコレーション設定を含む装飾ASSは別の出力です。
 
+## 開発について・謝辞
+
+本プロジェクトは、開発者が要件定義、設計判断、動作確認、公開判断を行い、OpenAI ChatGPT/Codexを含むAIの支援を受けて開発しました。AIはコード、テスト、調査、技術文書の作成を補助しています。AIが生成・提案した内容はそのまま正しいものとは扱わず、テストと人間による確認を経て採用しています。最終的な保守および公開内容への責任はプロジェクト管理者が負います。
+
+このツールは、FFmpeg / FFprobe、whisper.cpp、OpenAI Whisper、FastAPI、Uvicorn、Pydantic、Silero VADをはじめ、多くのオープンソースソフトウェア、研究成果、フォントによって成り立っています。また、任意機能としてfaster-whisper、WhisperX、Demucs、SpeechBrain、Google Gen AI SDK / Gemini APIを利用しています。
+
+これらのプロジェクトを公開し、継続的に開発・保守し、知見を共有してくださっている開発者、研究者、コントリビューターの皆様に深く感謝します。皆様の成果がなければ、本ツールの文字起こし、動画処理、発話検出、音源分離、話者解析、Web UI、字幕表現を実現することはできませんでした。
+
+個別の利用目的とAI支援開示は [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)、ライセンスおよび再配布条件は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) と [licenses/](licenses/) を参照してください。謝辞は、各ライセンスが要求する著作権表示やライセンス本文の代わりではありません。
+
 ## License
 
 このプロジェクト本体は `GPL-3.0-or-later` での配布を前提にしています。
