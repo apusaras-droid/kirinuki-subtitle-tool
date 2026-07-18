@@ -85,7 +85,7 @@ def gemini_model_status(probe: bool = False) -> dict[str, Any]:
     try:
         from google import genai
     except ImportError as exc:
-        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batまたはpip install -r requirements.txtを実行してください") from exc
+        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batの標準構成、またはpip install -r requirements-standard.txtを実行してください") from exc
     available: set[str] = set()
     error = ""
     client = genai.Client(api_key=key)
@@ -557,7 +557,7 @@ def research_project_knowledge(
     try:
         from google import genai
     except ImportError as exc:
-        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batまたはpip install -r requirements.txtを実行してください") from exc
+        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batの標準構成、またはpip install -r requirements-standard.txtを実行してください") from exc
 
     search_prompt = f"""Google検索を使い、作品「{title}」の字幕校正に必要な情報を調査してください。
 登場キャラクターの正式名・読み・別名と、作品固有の用語・地名・組織名・技名を収集してください。
@@ -693,7 +693,7 @@ def transcribe_project_with_gemini(project_id: str, model: str | None = None, la
     try:
         from google import genai
     except ImportError as exc:
-        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batまたはpip install -r requirements.txtを実行してください") from exc
+        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batの標準構成、またはpip install -r requirements-standard.txtを実行してください") from exc
 
     speaker_instruction = (
         "発話ごとに匿名の話者ラベルも返してください。同一人物には音声全体で同じラベルを使ってください。"
@@ -851,7 +851,7 @@ def analyze_project_with_gemini(
     try:
         from google import genai
     except ImportError as exc:
-        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batまたはpip install -r requirements.txtを実行してください") from exc
+        raise HTTPException(status_code=500, detail="google-genaiが未導入です。setup.batの標準構成、またはpip install -r requirements-standard.txtを実行してください") from exc
 
     if selected_task == "subtitle":
         task_instruction = """字幕校正だけを行ってください。

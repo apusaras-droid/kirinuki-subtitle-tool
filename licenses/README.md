@@ -1,8 +1,8 @@
 # Distribution License Notes
 
-This directory contains templates and notices for release packaging.
+This directory contains license texts, notices, and release metadata templates.
 
-- `GPL-3.0-or-later.txt`: placeholder reference for the project license
+- `GPL-3.0-or-later.txt`: full GNU GPL version 3 license text used by the project under the `or later` option
 - `third_party_notices.txt`: notices for bundled dependencies and assets
 - `source-offer.txt`: source code offer text for binary distributions
 - `build-info/`: build metadata templates to fill before release

@@ -19,7 +19,7 @@ function Append-Status([string]$Message) {
 
 function Ensure-Tool([string]$Name) {
   if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-    throw "$Name が見つかりません。PATH を確認してください。"
+    throw "$Name was not found. Check PATH."
   }
 }
 
@@ -45,7 +45,7 @@ function Get-ReleaseAssetUrl {
     }
   }
 
-  throw "GPL版のFFmpegアセットが見つかりませんでした。LGPL版は許可しません。"
+  throw "A GPL FFmpeg asset was not found. LGPL assets are not accepted."
 }
 
 function Find-Exe([string]$Root, [string]$Name) {
@@ -80,15 +80,15 @@ try {
   Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
 
   if (-not $selectedAsset -or -not $selectedAsset.digest) {
-    throw "FFmpeg release asset の digest が取得できません。検証なし配布は許可しません。"
+    throw "The FFmpeg release asset has no digest. Unverified downloads are not accepted."
   }
   if ($selectedAsset.digest -notmatch '^sha256:(?<sha>[A-Fa-f0-9]+)$') {
-    throw "FFmpeg release asset の digest 形式が不正です: $($selectedAsset.digest)"
+    throw "The FFmpeg release asset digest format is invalid: $($selectedAsset.digest)"
   }
   $expected = $Matches.sha.ToLowerInvariant()
   $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
   if ($expected -ne $actual) {
-    throw "FFmpeg ZIP の SHA-256 が一致しません。expected=$expected actual=$actual"
+    throw "FFmpeg ZIP SHA-256 verification failed. expected=$expected actual=$actual"
   }
   Write-Step "sha256 verified"
 
@@ -103,14 +103,14 @@ try {
 
   $top = Get-ChildItem -LiteralPath $tempDir -Directory | Where-Object { $_.Name -like "ffmpeg*" } | Select-Object -First 1
   if (-not $top) {
-    throw "展開後のフォルダが見つかりませんでした。"
+    throw "The extracted FFmpeg directory was not found."
   }
 
   Copy-Item -LiteralPath (Join-Path $top.FullName "*") -Destination $InstallDir -Recurse -Force
   $ffmpegExe = Find-Exe -Root $InstallDir -Name "ffmpeg.exe"
   $ffprobeExe = Find-Exe -Root $InstallDir -Name "ffprobe.exe"
   if (-not $ffmpegExe -or -not $ffprobeExe) {
-    throw "FFmpeg / FFprobe のインストール確認に失敗しました。"
+    throw "FFmpeg / FFprobe installation verification failed."
   }
   Append-Status "install: completed ($ReleaseTag)"
   Append-Status "verification: passed"

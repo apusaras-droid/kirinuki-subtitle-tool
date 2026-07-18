@@ -136,6 +136,34 @@ release/
 9. 配布物に GPLv3 の正式な本文を含めている。
 10. `scripts/package-release.ps1` で release 物を再現できる。
 
+## 8. 公開前自動検査
+
+正式公開前は次を実行する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-release.ps1 -RunTests -BuildPackage
+```
+
+GitHubの `origin` 設定後は `-RequireRemote` も追加する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-release.ps1 -RequireRemote -RunTests -BuildPackage
+```
+
+検査対象:
+
+- GPLv3全文とライセンス複製の一致
+- 公開必須文書と起動・セットアップBAT
+- 追跡中の秘密設定、動画、モデル、実行バイナリ、アーカイブ
+- Git全履歴の既知トークン形式と個人パス
+- 10MiBを超えるGitオブジェクト
+- PowerShell構文
+- Python、Node、フロントエンド、依存整合性テスト
+- `source.zip` と `app.zip` の作成
+- 配布アーカイブへの非公開物混入
+
+結果は `release/preflight-report.json` に保存する。検査失敗時はGitHub Releaseを作成しない。
+
 ## 8. 公式参照
 
 - GPLv3: https://www.gnu.org/licenses/gpl-3.0.html

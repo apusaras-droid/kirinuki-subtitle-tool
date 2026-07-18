@@ -2,11 +2,12 @@ Source Code Offer
 
 This binary release is accompanied by the corresponding source code for the same version.
 
-Source location:
-<fill in the release source URL or archive URL>
+This repository copy is a template only.
 
-Source archive checksum:
-<fill in the checksum>
+`scripts/package-release.ps1` replaces the application package copy with:
 
-Release tag / commit:
-<fill in the tag or commit hash>
+- the corresponding `source.zip` location;
+- the source archive SHA-256;
+- the exact release commit.
+
+Do not distribute a binary application package containing this template text.

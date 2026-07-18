@@ -18,9 +18,9 @@ set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
   echo [download-ffmpeg] failed with exit code %EXIT_CODE%
-  pause
+  if not defined CUTSUBTITLE_NO_PAUSE pause
   exit /b %EXIT_CODE%
 )
 
 echo [download-ffmpeg] completed
-pause
+if not defined CUTSUBTITLE_NO_PAUSE pause

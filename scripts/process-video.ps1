@@ -15,6 +15,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+$workspaceRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$venvPython = Join-Path $workspaceRoot '.venv\Scripts\python.exe'
+$pythonExe = if ($env:CUTSUBTITLE_PYTHON -and (Test-Path -LiteralPath $env:CUTSUBTITLE_PYTHON)) {
+  (Resolve-Path -LiteralPath $env:CUTSUBTITLE_PYTHON).Path
+} elseif (Test-Path -LiteralPath $venvPython) {
+  (Resolve-Path -LiteralPath $venvPython).Path
+} else {
+  (Get-Command python -ErrorAction Stop).Source
+}
 
 if (-not $VideoPath -or $VideoPath.Count -eq 0) {
   $VideoPath = @($args | Where-Object { $_ -and -not ($_ -is [System.Management.Automation.SwitchParameter]) })
@@ -129,7 +138,7 @@ function Invoke-ProcessOne {
   Write-Host ("[processor] running pipeline: " + $resolved)
   $previousErrorActionPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
-  & python @cliArgs *> $logPath
+  & $pythonExe @cliArgs *> $logPath
   $exitCode = $LASTEXITCODE
   $ErrorActionPreference = $previousErrorActionPreference
 

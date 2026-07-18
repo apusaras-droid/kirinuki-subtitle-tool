@@ -1,8 +1,8 @@
 param(
   [string]$OutputDir = (Join-Path $PSScriptRoot "..\release"),
   [switch]$IncludeModels,
-  [string]$SourceOfferUrl = "<fill in the release source URL or archive URL>",
-  [string]$SourceOfferChecksum = "<fill in the checksum>"
+  [string]$SourceOfferUrl = "",
+  [string]$SourceOfferChecksum = ""
 )
 
 $ErrorActionPreference = "Stop"

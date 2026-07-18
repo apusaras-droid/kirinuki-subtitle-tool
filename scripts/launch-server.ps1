@@ -140,7 +140,14 @@ function Open-Browser {
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-$python = (Get-Command python).Source
+$venvPython = Join-Path $root '.venv\Scripts\python.exe'
+if ($env:CUTSUBTITLE_PYTHON -and (Test-Path -LiteralPath $env:CUTSUBTITLE_PYTHON)) {
+  $python = (Resolve-Path -LiteralPath $env:CUTSUBTITLE_PYTHON).Path
+} elseif (Test-Path -LiteralPath $venvPython) {
+  $python = (Resolve-Path -LiteralPath $venvPython).Path
+} else {
+  $python = (Get-Command python -ErrorAction Stop).Source
+}
 $localVersion = Get-LocalBuildId -Root $root
 $selectedPort = $Port
 $logFile = Join-Path $LogDir ('server-{0}.log' -f $selectedPort)

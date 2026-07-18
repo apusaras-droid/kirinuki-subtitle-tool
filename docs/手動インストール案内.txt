@@ -1,6 +1,6 @@
 手動インストール案内
 
-自動セットアップ（setup.bat / download-runtime.bat / download-ffmpeg.bat）が失敗した場合は、以下を手動で入れてください。
+自動セットアップ（setup.bat）が失敗した場合は、以下を手動で入れてください。
 
 1. Python
 
@@ -12,9 +12,16 @@
 
 2. Python依存関係
 
-以下をまとめてインストールしてください。
+通常利用では標準構成をインストールしてください。
 
-pip install -r requirements.txt
+pip install -r requirements-standard.txt
+
+構成ごとのコマンド:
+
+- 最小: pip install -r requirements-core.txt
+- 標準: pip install -r requirements-standard.txt
+- フル: pip install -r requirements-full.txt
+- 開発: pip install -r requirements-dev.txt
 
 必要な主なパッケージ:
 
@@ -22,10 +29,12 @@ pip install -r requirements.txt
 - uvicorn[standard]
 - python-multipart
 - pydantic
-- faster-whisper
-- whisperx
-- demucs
-- speechbrain
+- google-genai（標準・フル）
+- faster-whisper（フルのみ）
+- whisperx（フルのみ）
+- demucs（フルのみ）
+- speechbrain（フルのみ）
+- silero-vad（フルのみ）
 
 3. FFmpeg / FFprobe
 
@@ -62,7 +71,7 @@ Windows向けの静的ビルドを入れてください。
 
 - AMD GPU を使う場合は Vulkan ドライバが有効であること
 - Python の仮想環境を使う場合は、起動時に有効化してから実行すること
-- モデルや FFmpeg を入れた後に `setup.bat` を再実行すると、導入済み判定の確認ができます
+- モデルや FFmpeg を入れた後は `setup.bat` の「導入状況の検査」で確認できます
 
 6. 起動確認
 
