@@ -13,7 +13,7 @@
 
 ## 前提
 
-- Python 3.10+
+- Python 3.10〜3.12（64-bit。Python 3.13は現在未対応）
 - FFmpeg / FFprobe がPATHから実行できること
 - 同梱済みの `tools/whisper.cpp` AMD/Vulkanビルドを使う場合は追加インストール不要
 - Python版Whisperを使う場合はどちらかを別途インストール

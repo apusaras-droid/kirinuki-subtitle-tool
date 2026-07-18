@@ -4,7 +4,7 @@
 
 1. Python
 
-- Python 3.10 以上
+- 64-bit Python 3.10〜3.12（Python 3.13は現在未対応）
 - インストール時に「Add Python to PATH」を有効にしてください
 - 確認コマンド:
   - python --version

@@ -57,6 +57,11 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 :python_ready
 set "CUTSUBTITLE_PYTHON=%PYTHON_EXE%"
 echo [setup] python=%PYTHON_EXE%
+"%PYTHON_EXE%" -c "import sys; raise SystemExit(0 if (3, 10) ^<= sys.version_info[:2] ^< (3, 13) else 1)"
+if errorlevel 1 (
+  echo [setup] Unsupported Python version. Install 64-bit Python 3.10, 3.11, or 3.12.
+  exit /b 1
+)
 "%PYTHON_EXE%" -m pip install --upgrade pip
 exit /b %ERRORLEVEL%
 
