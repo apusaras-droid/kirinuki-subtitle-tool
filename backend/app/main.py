@@ -289,6 +289,10 @@ class TranscriptUpdateRequest(BaseModel):
     speaker_roster: list[dict[str, Any]] | None = None
 
 
+class TranscriptSkipRequest(BaseModel):
+    project_id: str
+
+
 class RenderRequest(BaseModel):
     project_id: str
     quality: str = "low"
@@ -453,7 +457,10 @@ def get_project(project_id: str):
         data["edit_plan_path"] = "edit_plan.json"
         data["edit_plan"] = normalize_edit_plan_source_video(project_id, plan)
     data["has_edit_plan"] = edit_plan.exists()
-    data["has_transcript"] = (base / "transcript" / "transcript.json").exists()
+    transcript_path = base / "transcript" / "transcript.json"
+    data["has_transcript"] = transcript_path.exists()
+    if transcript_path.exists():
+        data["transcript"] = json.loads(transcript_path.read_text(encoding="utf-8"))
     data["has_gemini_proposal"] = (base / "ai" / "gemini_proposal.json").exists()
     data["has_decoration"] = (base / "decoration" / "decoration_project.json").exists()
     preview_files = sorted((base / "preview").glob("*.mp4"), key=lambda path: path.stat().st_mtime, reverse=True) if (base / "preview").exists() else []
@@ -958,6 +965,44 @@ def api_update_transcript(req: TranscriptUpdateRequest):
     write_srt(req.subtitles, srt_path)
     update_project_info(req.project_id, {"scenes": transcript.get("scenes", [])})
     return {"transcript_path": str(path), "srt_path": str(srt_path), "transcript": transcript}
+
+
+@app.post("/api/transcript/skip")
+def api_skip_transcript(req: TranscriptSkipRequest):
+    base = require_project(req.project_id)
+    transcript = {
+        "engine": "none",
+        "status": "skipped",
+        "subtitle_mode": "none",
+        "created_at": time.time(),
+        "subtitles": [],
+        "raw_subtitles": [],
+        "aligned_subtitles": [],
+        "segments": [],
+        "scenes": [],
+        "speaker_roster": [],
+    }
+    transcript_path = resolve_project_path(req.project_id, "transcript", "transcript.json")
+    atomic_write_json(transcript_path, transcript, backup=True)
+    for filename in ("original.srt", "edited.srt"):
+        write_srt([], resolve_project_path(req.project_id, "subtitles", filename))
+
+    edit_plan_path = base / "edit_plan.json"
+    edit_plan = None
+    if edit_plan_path.exists():
+        edit_plan = load_project_edit_plan(req.project_id)
+        edit_plan["subtitles"] = []
+        edit_plan["speaker_roster"] = []
+        atomic_write_json(edit_plan_path, edit_plan, backup=True)
+
+    update_project_info(req.project_id, {"scenes": []})
+    audit_event("transcription.skipped", project_id=req.project_id)
+    return {
+        "transcript_path": str(transcript_path),
+        "srt_path": str(resolve_project_path(req.project_id, "subtitles", "original.srt")),
+        "transcript": transcript,
+        "edit_plan": edit_plan,
+    }
 
 
 @app.post("/api/preview/render")

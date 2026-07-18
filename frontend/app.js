@@ -7,6 +7,7 @@ const state = {
   selectedAudioPreviewOffsetSec: 0,
   audioPath: null,
   transcript: null,
+  transcriptionCompleted: false,
   silences: [],
   editPlanPath: null,
   editPlan: null,
@@ -205,7 +206,7 @@ function workflowArtifacts(extra = {}) {
     : (state.transcript?.subtitles || []);
   return {
     projectReady: Boolean(state.projectId && state.sourceVideo),
-    transcriptReady: Boolean(subtitles.length),
+    transcriptReady: Boolean(state.transcriptionCompleted || state.transcript || subtitles.length),
     editPlanReady: Boolean(state.editPlanPath || state.editPlan),
     cutConfirmed: workflowStore.getState().stepStatus.STEP_CUT === "completed",
     aiSubtitleConfirmed: workflowStore.getState().stepStatus.STEP_AI_SUBTITLE === "completed",
@@ -286,8 +287,8 @@ function canEnterWorkflowPage(page) {
   if (["project", "projects", "settings"].includes(page)) return { allowed: true, reason: "" };
   if (!state.projectId || !state.sourceVideo) return { allowed: false, reason: "先にプロジェクトを作成してください" };
   if (page === "editor") return { allowed: true, reason: "" };
-  if (!subtitleItems().length && ["aiSubtitle", "cut", "subtitles", "decoration", "previewCheck"].includes(page)) {
-    return { allowed: false, reason: "先に字幕を作成してください" };
+  if (!workflowArtifacts().transcriptReady && ["aiSubtitle", "cut", "subtitles", "decoration", "previewCheck"].includes(page)) {
+    return { allowed: false, reason: "先に字幕を作成するか「字幕なしで次へ」を選んでください" };
   }
   if (page === "subtitles" && workflowStore.getState().stepStatus.STEP_CUT !== "completed") {
     return { allowed: false, reason: "先にカット編集を確定してください" };
@@ -786,7 +787,7 @@ function setBusy(busy) {
 }
 
 function setProjectReady(ready) {
-  for (const id of ["saveProjectBtn", "overwriteProjectBtn", "saveSubtitlesBtn", "manualPreviewBtn", "previewRenderBtn", "exportBtn", "exportCustomBtn", "openExportDirectoryBtn", "transcribeOnlyBtn", "transcribePlanBtn", "previewGeneratedSubtitlesBtn", "probeBtn", "extractBtn", "transcribeBtn", "silenceBtn"]) {
+  for (const id of ["saveProjectBtn", "overwriteProjectBtn", "saveSubtitlesBtn", "manualPreviewBtn", "previewRenderBtn", "exportBtn", "exportCustomBtn", "openExportDirectoryBtn", "transcribeOnlyBtn", "skipSubtitlesBtn", "transcribePlanBtn", "previewGeneratedSubtitlesBtn", "probeBtn", "extractBtn", "transcribeBtn", "silenceBtn"]) {
     const control = $(id);
     if (control) control.disabled = !ready;
   }
@@ -1481,7 +1482,8 @@ async function saveProjectScenes() {
 async function persistCurrentSubtitles(options = {}) {
   if (!state.projectId) return;
   const subtitles = subtitleItems();
-  if (!subtitles.length && !options.allowEmpty) throw new Error("先に字幕を生成してください");
+  const allowEmpty = Boolean(options.allowEmpty || state.transcriptionCompleted || state.transcript?.subtitle_mode === "none");
+  if (!subtitles.length && !allowEmpty) throw new Error("先に字幕を生成するか「字幕なしで次へ」を選んでください");
   if (state.editPlan) {
     state.editPlan.subtitles = subtitles;
     const data = await api("/api/edit-plan/update", {
@@ -9349,6 +9351,7 @@ function resetProjectRuntimeState() {
   state.selectedAudioPreviewOffsetSec = 0;
   state.audioPath = null;
   state.transcript = null;
+  state.transcriptionCompleted = false;
   state.silences = [];
   state.editPlanPath = null;
   state.editPlan = null;
@@ -9439,7 +9442,10 @@ function applyLoadedProject(data) {
   state.cutDirty = false;
   state.lastExportResult = data.has_output ? { restored: true } : null;
   state.decorationPreviewUrl = data.preview_video_url || null;
-  if (!state.editPlan && data.subtitles?.length) {
+  state.transcriptionCompleted = Boolean(data.has_transcript);
+  if (data.transcript && typeof data.transcript === "object") {
+    state.transcript = { ...data.transcript, subtitles: data.transcript.subtitles || [] };
+  } else if (!state.editPlan && data.subtitles?.length) {
     state.transcript = { subtitles: data.subtitles };
   }
   syncProjectNameInput(state.projectName);
@@ -9763,6 +9769,7 @@ async function transcribeAndDetectSilence() {
     protected_segments: data.protected_segments || [],
     processing_summary: data.processing_summary || null,
   };
+  state.transcriptionCompleted = true;
   const defaultEmotion = $("defaultEmotionPreset")?.value || "neutral";
   const defaultStyle = $("defaultSubtitleStylePreset")?.value || "subtitle_standard";
   for (const sub of state.transcript.subtitles || []) {
@@ -9822,6 +9829,7 @@ async function geminiTranscribeAndDetectSilence() {
     aligned_subtitles: [],
     processing_summary: { transcription: { engine: "gemini", model: data.model, status: "ok" } },
   };
+  state.transcriptionCompleted = true;
   state.geminiProposal = data.proposal || null;
   const timing = audioTimingSettings();
   if (timing.detection_mode === "vad") {
@@ -9864,10 +9872,30 @@ async function geminiTranscribeAndDetectSilence() {
   return data;
 }
 
+function completeTranscriptionWorkflow(mode) {
+  state.transcriptionCompleted = true;
+  state.editPlan = null;
+  state.editPlanPath = null;
+  state.editPlanBuildSignature = "";
+  invalidateWorkflowFrom("STEP_TRANSCRIBE");
+  markWorkflowCompleted("STEP_TRANSCRIBE");
+  if (mode === "local") markWorkflowCompleted("STEP_AI_SUBTITLE");
+  renderSubtitles();
+  updateTranscriptionModeUi();
+  state.projectSettings = { ...(state.projectSettings || {}), transcription_mode: mode };
+  saveProjectSettings().catch(() => {});
+}
+
 $("transcribeBtn").addEventListener("click", () =>
   runStep(
     $("transcriptionMode")?.value === "gemini" ? "Gemini文字起こし" : ($("useWhisperxAlignment")?.checked ? "文字起こし 精密補正" : "文字起こし"),
-    $("transcriptionMode")?.value === "gemini" ? geminiTranscribeAndDetectSilence : transcribeAndDetectSilence,
+    async () => {
+      const mode = $("transcriptionMode")?.value || "hybrid";
+      const result = mode === "gemini" ? await geminiTranscribeAndDetectSilence() : await transcribeAndDetectSilence();
+      completeTranscriptionWorkflow(mode);
+      $("paths").textContent = `字幕 ${subtitleItems().length}件 / カット案は未作成`;
+      return result;
+    },
   )
 );
 
@@ -9877,24 +9905,37 @@ $("transcribeOnlyBtn").addEventListener("click", () =>
     const mode = $("transcriptionMode")?.value || "hybrid";
     if (mode === "gemini") await geminiTranscribeAndDetectSilence();
     else await transcribeAndDetectSilence();
-    state.editPlan = null;
-    state.editPlanPath = null;
-    state.editPlanBuildSignature = "";
-    invalidateWorkflowFrom("STEP_TRANSCRIBE");
-    markWorkflowCompleted("STEP_TRANSCRIBE");
-    renderSubtitles();
-    updateTranscriptionModeUi();
+    completeTranscriptionWorkflow(mode);
     $("paths").textContent = `字幕 ${subtitleItems().length}件 / カット案は未作成`;
-    state.projectSettings = { ...(state.projectSettings || {}), transcription_mode: mode };
-    saveProjectSettings().catch(() => {});
     return state.transcript;
+  })
+);
+
+$("skipSubtitlesBtn")?.addEventListener("click", () =>
+  runStep("字幕なしで続行", async () => {
+    requireProject();
+    const data = await api("/api/transcript/skip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: state.projectId }),
+    });
+    state.transcript = data.transcript || { subtitle_mode: "none", subtitles: [] };
+    state.silences = [];
+    state.projectScenes = [];
+    completeTranscriptionWorkflow($("transcriptionMode")?.value || "hybrid");
+    if (workflowStore.getState().stepStatus.STEP_AI_SUBTITLE !== "completed") {
+      markWorkflowCompleted("STEP_AI_SUBTITLE");
+    }
+    renderScenes();
+    $("paths").textContent = "字幕なし / カット編集で動画全体から編集できます";
+    setAppPage("cut");
+    return data;
   })
 );
 
 $("transcribePlanBtn").addEventListener("click", () =>
   runStep("現在の字幕からカット案作成", async () => {
     requireProject();
-    if (!subtitleItems().length) throw new Error("先に字幕作成工程で字幕を作成してください");
     await ensureEditPlanForCurrentProject({ force: true });
     const segmentCount = (state.editPlan?.segments || []).filter((segment) => segment.enabled !== false).length;
     $("paths").textContent = `${state.editPlanPath || "edit_plan.json"} / 残す区間 ${segmentCount}件`;

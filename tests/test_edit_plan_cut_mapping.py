@@ -5,6 +5,29 @@ from backend.app.services import build_scene_catalog_from_subtitles
 
 
 class EditPlanCutMappingTests(unittest.TestCase):
+    def test_subtitle_free_mode_keeps_full_range_for_manual_cutting(self):
+        plan = build_edit_plan(
+            "input.mp4",
+            {"start_sec": 10.0, "end_sec": 40.0},
+            [{"start_sec": 0.0, "end_sec": 30.0}],
+            {"subtitle_mode": "none", "subtitles": []},
+            {
+                "detection_mode": "silencedetect",
+                "manual_cut_segments": [{"start_sec": 15.0, "end_sec": 20.0}],
+                "pre_margin_sec": 0.0,
+                "post_margin_sec": 0.0,
+                "merge_silence_gap_sec": 0.0,
+                "min_keep_segment_duration": 0.1,
+            },
+        )
+
+        self.assertEqual(plan["subtitles"], [])
+        self.assertEqual(len(plan["segments"]), 2)
+        self.assertEqual(plan["segments"][0]["source_start_sec"], 10.0)
+        self.assertEqual(plan["segments"][0]["source_end_sec"], 15.0)
+        self.assertEqual(plan["segments"][1]["source_start_sec"], 20.0)
+        self.assertEqual(plan["segments"][1]["source_end_sec"], 40.0)
+
     def test_manual_cut_remaps_subtitles_to_joined_timeline(self):
         transcript = {
             "subtitles": [

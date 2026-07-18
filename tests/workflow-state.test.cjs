@@ -19,6 +19,15 @@ state = store.getState();
 assert.equal(state.stepStatus.STEP_PROJECT, "completed");
 assert.equal(state.currentStepId, "STEP_TRANSCRIBE");
 
+const transcriptOnlyStore = new WorkflowStore();
+transcriptOnlyStore.replace(null, {
+  projectReady: true,
+  transcriptReady: true,
+  editPlanReady: false,
+});
+assert.equal(transcriptOnlyStore.getState().stepStatus.STEP_TRANSCRIBE, "completed");
+assert.equal(transcriptOnlyStore.getState().currentStepId, "STEP_AI_SUBTITLE");
+
 store.markCompleted("STEP_TRANSCRIBE");
 state = store.getState();
 assert.equal(state.stepStatus.STEP_TRANSCRIBE, "completed");

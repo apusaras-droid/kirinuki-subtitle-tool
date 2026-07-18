@@ -348,13 +348,15 @@ def build_edit_plan(
     detection_mode = str(merged_settings.get("detection_mode", "silencedetect")).strip().lower()
     vad_intervals = transcript.get("vad_intervals") or transcript.get("speech_intervals") or []
     speech: list[tuple[float, float]] = []
-    if detection_mode in {"vad", "hybrid"} and vad_intervals:
+    if transcript.get("subtitle_mode") == "none":
+        speech = [(0.0, duration)] if duration > 0 else []
+    elif detection_mode in {"vad", "hybrid"} and vad_intervals:
         for item in vad_intervals:
             start = float(item.get("speech_start_sec", item.get("start_sec", 0.0)))
             end = float(item.get("speech_end_sec", item.get("end_sec", start)))
             if end > start:
                 speech.append((max(0.0, start), min(duration, end)))
-    if not speech and detection_mode in {"silencedetect", "hybrid"}:
+    if not speech and transcript.get("subtitle_mode") != "none" and detection_mode in {"silencedetect", "hybrid"}:
         speech = invert_silences(silences or [], duration)
     keep_ranges = pad_and_merge_segments(
         speech,

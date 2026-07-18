@@ -64,7 +64,7 @@
     const next = normalizeState(saved);
     const completed = {
       STEP_PROJECT: Boolean(artifacts.projectReady),
-      STEP_TRANSCRIBE: Boolean(artifacts.transcriptReady && artifacts.editPlanReady),
+      STEP_TRANSCRIBE: Boolean(artifacts.transcriptReady),
       STEP_AI_SUBTITLE: Boolean(
         artifacts.aiSubtitleConfirmed || artifacts.cutConfirmed || artifacts.subtitleConfirmed || artifacts.decorationReady || artifacts.previewReady || artifacts.outputReady
       ),
