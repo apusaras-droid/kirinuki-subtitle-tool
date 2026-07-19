@@ -10,7 +10,7 @@ set "CUTSUBTITLE_NO_PAUSE=1"
 :menu
 cls
 echo ============================================================
-echo  Kirinuki Subtitle Tool - Setup
+echo  Kirinuki Douga Kobo - Setup
 echo ============================================================
 echo.
 echo  [1] Standard setup - Recommended

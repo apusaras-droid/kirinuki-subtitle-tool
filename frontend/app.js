@@ -15,6 +15,7 @@ const state = {
   mode: "source",
   selectedSubtitleId: null,
   loopSubtitleId: null,
+  showCutSubtitles: false,
   rangeTranscriptionProposal: null,
   editorView: "timeline",
   waveformDrafts: {
@@ -184,6 +185,7 @@ let taskProgressTimer = null;
 let backendProgressTimer = null;
 let activeTaskProgress = null;
 let subtitleAssStyleSaveTimer = null;
+let subtitlePlaybackListKey = "";
 const TASK_DURATION_HISTORY_KEY = "kirinuki_task_duration_history_v1";
 const ZOOM_BOX_PRESETS_KEY = "kirinuki_zoom_box_presets_v1";
 const TASK_FALLBACK_ESTIMATE_SEC = {
@@ -2846,7 +2848,10 @@ function requireProject() {
 }
 
 function activeSubtitles() {
-  return (state.editPlan?.subtitles || state.transcript?.subtitles || []).filter((sub) => sub.enabled !== false);
+  const includeCutSubtitles = state.showCutSubtitles && state.appPage === "subtitles" && state.mode === "source";
+  return (state.editPlan?.subtitles || state.transcript?.subtitles || []).filter(
+    (sub) => sub.enabled !== false || (includeCutSubtitles && sub.disabled_by_cut === true),
+  );
 }
 
 function subtitleBoundsForMode(sub, mode = state.mode) {
@@ -2861,15 +2866,101 @@ function subtitleBoundsForMode(sub, mode = state.mode) {
 }
 
 function subtitleAtTimelineTime(timeSec, mode = state.mode) {
+  return subtitlesAtTimelineTime(timeSec, mode)[0] || null;
+}
+
+function subtitlesWithCollisionLanesForMode(mode = state.mode) {
+  const copied = activeSubtitles()
+    .filter((sub) => subtitleDisplayText(sub))
+    .map((sub) => {
+      const item = { ...sub };
+      delete item.subtitle_collision_lane;
+      return item;
+    })
+    .sort((a, b) => {
+      const aBounds = subtitleBoundsForMode(a, mode);
+      const bBounds = subtitleBoundsForMode(b, mode);
+      return aBounds.start - bBounds.start || aBounds.end - bBounds.end;
+    });
+  let active = [];
+  for (const item of copied) {
+    const bounds = subtitleBoundsForMode(item, mode);
+    active = active.filter((entry) => entry.end > bounds.start + 0.0005);
+    if (active.length) {
+      const used = new Set(active.map((entry) => entry.item.subtitle_collision_lane).filter(Number.isInteger));
+      for (const entry of active) {
+        if (Number.isInteger(entry.item.subtitle_collision_lane)) continue;
+        let lane = 0;
+        while (used.has(lane)) lane += 1;
+        entry.item.subtitle_collision_lane = lane;
+        used.add(lane);
+      }
+      let lane = 0;
+      while (used.has(lane)) lane += 1;
+      item.subtitle_collision_lane = lane;
+    }
+    active.push({ end: Math.max(bounds.start + 0.001, bounds.end), item });
+  }
+  return copied;
+}
+
+function subtitlesAtTimelineTime(timeSec, mode = state.mode) {
   const t = Math.max(0, Number(timeSec) || 0);
-  return activeSubtitles().find((sub) => {
+  return subtitlesWithCollisionLanesForMode(mode).filter((sub) => {
     const { start, end } = subtitleBoundsForMode(sub, mode);
     return t >= start && t <= end;
-  }) || null;
+  });
 }
 
 function subtitleAtTime(timeSec = video.currentTime) {
   return subtitleAtTimelineTime(timeSec, state.mode);
+}
+
+function renderSubtitleOverlayStack(overlay, subtitles) {
+  if (!overlay) return;
+  const shell = overlay.closest?.(".video-shell");
+  shell?.querySelectorAll?.(`[data-overlay-owner="${overlay.id}"]`).forEach((item) => item.remove());
+  const ordered = subtitles || [];
+  if (!ordered.length) {
+    renderSubtitleOverlay(overlay, null);
+    return;
+  }
+  ordered.forEach((sub, index) => {
+    const target = index === 0 ? overlay : document.createElement("div");
+    if (index > 0) {
+      target.className = overlay.className;
+      target.dataset.overlayOwner = overlay.id;
+      shell?.appendChild(target);
+    }
+    const lane = Number.isInteger(sub.subtitle_collision_lane) ? sub.subtitle_collision_lane : index;
+    const isStacked = Number.isInteger(sub.subtitle_collision_lane);
+    const baseStyle = effectiveAssStyleForSubtitle(sub);
+    const stackStep = Math.max(96, Number(baseStyle.font_size || 44) * 2.8);
+    const laneSubtitle = isStacked
+      ? {
+          ...sub,
+          ass_style: {
+            ...(sub.ass_style || {}),
+            enabled: true,
+            alignment: baseStyle.alignment,
+          },
+        }
+      : sub;
+    renderSubtitleOverlay(target, laneSubtitle);
+    if (isStacked && lane > 0) {
+      const alignment = Number(baseStyle.alignment) || 2;
+      const row = Math.floor((alignment - 1) / 3);
+      const shift = lane * stackStep * assPreviewScale(target);
+      const marginV = Math.max(2, Number(baseStyle.margin_v || 0) * assPreviewScale(target));
+      if (row === 0) {
+        target.style.bottom = `${marginV + shift}px`;
+      } else if (row === 1) {
+        target.style.top = `calc(50% + ${shift}px)`;
+      } else {
+        target.style.top = `${marginV + shift}px`;
+      }
+    }
+  });
 }
 
 function sourceRangeBounds() {
@@ -3102,19 +3193,23 @@ function applyAssSubtitleStyleToOverlay(overlay, sub) {
 function updateOverlay() {
   const mainMedia = primaryPlaybackVideo();
   const t = subtitleTimebase(mainMedia);
-  const sub = subtitleAtTimelineTime(t, state.mode);
-  renderSubtitleOverlay($("subtitleOverlay"), sub);
+  const mainSubtitles = subtitlesAtTimelineTime(t, state.mode);
+  const sub = mainSubtitles[0] || null;
+  renderSubtitleOverlayStack($("subtitleOverlay"), mainSubtitles);
   const subtitlePageT = subtitlePageVideo ? subtitleTimebase(subtitlePageVideo) : t;
-  const overlaySub = subtitleAtTimelineTime(subtitlePageT, state.mode);
+  const overlaySubtitles = subtitlesAtTimelineTime(subtitlePageT, state.mode);
+  const overlaySub = overlaySubtitles[0] || null;
   const subtitlePageOverlay = $("subtitlePagePreviewOverlay");
   if (subtitlePageOverlay) {
-    renderSubtitleOverlay(subtitlePageOverlay, overlaySub);
+    renderSubtitleOverlayStack(subtitlePageOverlay, overlaySubtitles);
   }
+  updateSubtitlePlaybackList(overlaySubtitles);
   const cutPageT = cutPageVideo ? subtitleTimebase(cutPageVideo) : t;
-  const cutSub = subtitleAtTimelineTime(cutPageT, state.mode);
+  const cutSubtitles = subtitlesAtTimelineTime(cutPageT, state.mode);
+  const cutSub = cutSubtitles[0] || null;
   const cutPageOverlay = $("cutPagePreviewOverlay");
   if (cutPageOverlay) {
-    renderSubtitleOverlay(cutPageOverlay, cutSub);
+    renderSubtitleOverlayStack(cutPageOverlay, cutSubtitles);
   }
   const cutCurrentTime = $("cutCurrentTime");
   if (cutCurrentTime) cutCurrentTime.textContent = fmtTime(cutPageT);
@@ -3584,15 +3679,24 @@ function renderSubtitles() {
   if ($("translateSubtitlesBtn")) {
     $("translateSubtitlesBtn").disabled = !state.projectId || !subtitles.some((sub) => sub.enabled !== false && String(sub.source_text || sub.text || "").trim());
   }
+  const cutExcludedCount = subtitles.filter((sub) => sub.disabled_by_cut === true).length;
+  const visibleSubtitleCount = state.showCutSubtitles ? subtitles.length : subtitles.length - cutExcludedCount;
   const subtitleCount = state.appPage === "subtitles" ? $("subtitleCountPage") : $("subtitleCount");
-  if (subtitleCount) subtitleCount.textContent = `${subtitles.length}件`;
+  if (subtitleCount) subtitleCount.textContent = cutExcludedCount ? `${visibleSubtitleCount}/${subtitles.length}件` : `${subtitles.length}件`;
   const subtitleCountPage = $("subtitleCountPage");
-  if (subtitleCountPage && subtitleCountPage !== subtitleCount) subtitleCountPage.textContent = `${subtitles.length}件`;
+  if (subtitleCountPage && subtitleCountPage !== subtitleCount) subtitleCountPage.textContent = cutExcludedCount ? `${visibleSubtitleCount}/${subtitles.length}件` : `${subtitles.length}件`;
+  const showCutToggle = $("showCutSubtitlesToggle");
+  if (showCutToggle) {
+    showCutToggle.checked = state.showCutSubtitles;
+    showCutToggle.disabled = cutExcludedCount === 0;
+  }
   if (!list) return;
   list.textContent = "";
   subtitles.forEach((sub, index) => {
     const item = document.createElement("div");
     item.className = `subtitle-item${sub.id === state.selectedSubtitleId ? " selected" : ""}`;
+    item.dataset.subtitleId = String(sub.id || "");
+    item.hidden = sub.disabled_by_cut === true && !state.showCutSubtitles;
     const meta = document.createElement("div");
     meta.className = "subtitle-meta";
 
@@ -3821,6 +3925,34 @@ function renderSubtitles() {
   });
   renderScenes();
   renderDecorationPage();
+}
+
+function updateSubtitlePlaybackList(activeItems = []) {
+  const list = $("subtitleListPage");
+  if (!list) return;
+  const activeIds = (activeItems || []).map((item) => String(item?.id || "")).filter(Boolean);
+  const activeSet = new Set(activeIds);
+  list.querySelectorAll(".subtitle-item").forEach((row) => {
+    const playing = activeSet.has(String(row.dataset.subtitleId || ""));
+    row.classList.toggle("playing", playing);
+    if (playing) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+  });
+  const playbackKey = activeIds.join("|");
+  if (state.appPage !== "subtitles" || !activeIds.length || playbackKey === subtitlePlaybackListKey) {
+    subtitlePlaybackListKey = playbackKey;
+    return;
+  }
+  subtitlePlaybackListKey = playbackKey;
+  const primary = list.querySelector(`[data-subtitle-id="${CSS.escape(activeIds[0])}"]`);
+  if (!primary) return;
+  const listRect = list.getBoundingClientRect();
+  const rowRect = primary.getBoundingClientRect();
+  if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) {
+    const relativeTop = list.scrollTop + (rowRect.top - listRect.top);
+    const targetTop = Math.max(0, relativeTop - Math.max(0, (list.clientHeight - rowRect.height) / 2));
+    list.scrollTo({ top: targetTop, behavior: "smooth" });
+  }
 }
 
 function previewGeneratedSubtitles() {
@@ -10790,6 +10922,12 @@ $("finalOutputMode")?.addEventListener("change", () => saveProjectSettings().cat
 $("outputProfile")?.addEventListener("change", () => saveProjectSettings().catch(() => {}));
 $("finalOutputMode")?.addEventListener("change", () => invalidateWorkflowFrom("STEP_EXPORT"));
 $("outputProfile")?.addEventListener("change", () => invalidateWorkflowFrom("STEP_EXPORT"));
+$("showCutSubtitlesToggle")?.addEventListener("change", () => {
+  state.showCutSubtitles = Boolean($("showCutSubtitlesToggle").checked);
+  subtitlePlaybackListKey = "";
+  renderSubtitles();
+  updateOverlay();
+});
 const transcriptionSettingIds = [
   "transcriptionMode", "computeProfile", "engine", "model", "language", "audioTimingPreset", "localTranscriptionPreset", "vadBoundaryPreset", "useVad",
   "voiceIsolationEnabled", "useIsolatedVoiceForVad", "useIsolatedVoiceForWhisper",

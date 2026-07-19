@@ -243,10 +243,65 @@ def _subtitle_relative_time(item: dict, start_keys: tuple[str, ...], source_rang
     return 0.0
 
 
+def _extend_keep_ranges_for_overlapping_subtitles(
+    keep_ranges: list[tuple[float, float]],
+    subtitles: list[dict],
+    duration: float,
+    source_range_start: float,
+    source_range_end: float,
+) -> list[tuple[float, float]]:
+    """Keep a complete caption when VAD already retained part of its speech.
+
+    This only expands automatic keep ranges. Manual cuts are applied later and
+    therefore remain authoritative.
+    """
+    expanded = _merge_intervals(keep_ranges)
+    candidates: list[tuple[float, float]] = []
+    for item in subtitles or []:
+        if item.get("enabled", True) is False and not item.get("disabled_by_cut"):
+            continue
+        if not str(item.get("text", "")).strip():
+            continue
+        start = _subtitle_relative_time(
+            item,
+            ("selected_start_sec", "range_relative_start_sec", "corrected_start_sec", "start_sec", "source_start_sec", "original_start_sec"),
+            source_range_start,
+            source_range_end,
+        )
+        end = _subtitle_relative_time(
+            item,
+            ("selected_end_sec", "range_relative_end_sec", "corrected_end_sec", "end_sec", "source_end_sec", "original_end_sec"),
+            source_range_start,
+            source_range_end,
+        )
+        interval = _clamp_interval(start, end, duration)
+        if interval is not None:
+            candidates.append(interval)
+
+    pending = candidates
+    while pending:
+        retained: list[tuple[float, float]] = []
+        changed = False
+        for start, end in pending:
+            if any(min(end, keep_end) - max(start, keep_start) > 0.0005 for keep_start, keep_end in expanded):
+                expanded = _merge_intervals(expanded + [(start, end)])
+                changed = True
+            else:
+                retained.append((start, end))
+        if not changed:
+            break
+        pending = retained
+    return expanded
+
+
 def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_range_start: float, source_range_end: float | None = None) -> list[dict]:
     mapped: list[dict] = []
     for idx, sub in enumerate(subtitles, start=1):
         item = deepcopy(sub)
+        was_disabled_by_cut = bool(item.get("disabled_by_cut"))
+        enabled_before_cut = bool(item.get("enabled_before_cut", True)) if was_disabled_by_cut else item.get("enabled", True) is not False
+        if was_disabled_by_cut:
+            item["enabled"] = enabled_before_cut
         rel_start = _subtitle_relative_time(
             item,
             ("selected_start_sec", "range_relative_start_sec", "corrected_start_sec", "start_sec", "output_start_sec", "source_start_sec", "original_start_sec"),
@@ -297,6 +352,8 @@ def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_
                 }
             )
         if not pieces:
+            item["enabled_before_cut"] = enabled_before_cut
+            item["disabled_by_cut"] = True
             item["enabled"] = False
             item["original_start_sec"] = round(source_range_start + rel_start, 3)
             item["original_end_sec"] = round(source_range_start + rel_end, 3)
@@ -312,6 +369,9 @@ def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_
             mapped.append(item)
             continue
         out_item = deepcopy(item)
+        out_item.pop("disabled_by_cut", None)
+        out_item.pop("enabled_before_cut", None)
+        out_item["enabled"] = enabled_before_cut
         out_item["segment_id"] = pieces[0]["segment_id"]
         out_item["source_start_sec"] = pieces[0]["original_start_sec"]
         out_item["source_end_sec"] = pieces[-1]["original_end_sec"]
@@ -329,6 +389,8 @@ def map_subtitles_to_output(subtitles: list[dict], segments: list[dict], source_
         out_item["split_piece_total"] = len(pieces)
         out_item["split_original_id"] = item["id"]
         out_item["split_pieces"] = pieces
+        out_item["cut_clipped_start"] = pieces[0]["original_start_sec"] > round(source_range_start + rel_start, 3)
+        out_item["cut_clipped_end"] = pieces[-1]["original_end_sec"] < round(source_range_start + rel_end, 3)
         out_item["text"] = str(item.get("text", "")).strip()
         mapped.append(out_item)
     return mapped
@@ -345,6 +407,11 @@ def build_edit_plan(
     range_start = float(source_range["start_sec"])
     range_end = float(source_range["end_sec"])
     duration = max(0.0, range_end - range_start)
+    subtitles = transcript.get("subtitles") or []
+    if not subtitles and transcript.get("segments"):
+        from .srt import subtitles_from_whisper
+
+        subtitles = subtitles_from_whisper(transcript)
     detection_mode = str(merged_settings.get("detection_mode", "silencedetect")).strip().lower()
     vad_intervals = transcript.get("vad_intervals") or transcript.get("speech_intervals") or []
     speech: list[tuple[float, float]] = []
@@ -365,6 +432,13 @@ def build_edit_plan(
         _setting_float(merged_settings, "post_margin_sec", float(merged_settings["post_speech_padding"])),
         _setting_float(merged_settings, "merge_silence_gap_sec", float(merged_settings["merge_gap_duration"])),
         _setting_float(merged_settings, "min_keep_segment_duration", float(merged_settings["min_keep_segment_duration"])),
+    )
+    keep_ranges = _extend_keep_ranges_for_overlapping_subtitles(
+        keep_ranges,
+        subtitles,
+        duration,
+        range_start,
+        range_end,
     )
     manual_cut_segments = _normalize_intervals(merged_settings.get("manual_cut_segments") or [], duration, range_start)
     protected_segments = _normalize_intervals(merged_settings.get("protected_segments") or [], duration, range_start)
@@ -391,11 +465,6 @@ def build_edit_plan(
         )
         output_cursor += length
 
-    subtitles = transcript.get("subtitles") or []
-    if not subtitles and transcript.get("segments"):
-        from .srt import subtitles_from_whisper
-
-        subtitles = subtitles_from_whisper(transcript)
     subtitles = map_subtitles_to_output(subtitles, segments, range_start, range_end)
     speaker_diarization = transcript.get("speaker_diarization") or {}
     speaker_segments = speaker_diarization.get("speaker_segments") or transcript.get("speaker_segments") or []

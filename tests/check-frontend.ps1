@@ -9,6 +9,12 @@ $appText = Get-Content -LiteralPath $appPath -Raw -Encoding UTF8
 $htmlText = Get-Content -LiteralPath $htmlPath -Raw -Encoding UTF8
 $stylesText = Get-Content -LiteralPath $stylesPath -Raw -Encoding UTF8
 
+$brandName = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("5YiH44KK5oqc44GN5YuV55S75bel5oi/"))
+if (-not $htmlText.Contains("<title>$brandName</title>") -or
+    -not $htmlText.Contains("<h1>$brandName</h1>")) {
+  throw "Application branding must remain unified"
+}
+
 $references = [regex]::Matches($appText, '\$\("([A-Za-z0-9_-]+)"\)') |
   ForEach-Object { $_.Groups[1].Value } |
   Sort-Object -Unique
@@ -39,8 +45,22 @@ if ($duplicates) {
 if ($appText.Contains('subtitlePageVideo?.paused && selectedSubtitle()')) {
   throw "Subtitle preview must not show the selected subtitle outside its timeline range"
 }
-if (-not $appText.Contains('const overlaySub = subtitleAtTimelineTime(subtitlePageT, state.mode);')) {
+if (-not $appText.Contains('const overlaySubtitles = subtitlesAtTimelineTime(subtitlePageT, state.mode);') -or
+    -not $appText.Contains('renderSubtitleOverlayStack(subtitlePageOverlay, overlaySubtitles);')) {
   throw "Subtitle preview must resolve its overlay from the active preview timeline"
+}
+if (-not $appText.Contains('function subtitlesWithCollisionLanesForMode') -or
+    -not $appText.Contains('Number.isInteger(sub.subtitle_collision_lane)')) {
+  throw "Overlapping subtitle preview lanes must remain stable for each complete caption"
+}
+if (-not $appText.Contains('function updateSubtitlePlaybackList') -or
+    -not $appText.Contains('updateSubtitlePlaybackList(overlaySubtitles);') -or
+    -not $stylesText.Contains('.subtitle-item.playing')) {
+  throw "Subtitle editor rows must highlight and scroll with preview playback"
+}
+if (-not $htmlText.Contains('id="showCutSubtitlesToggle"') -or
+    -not $appText.Contains('sub.disabled_by_cut === true && !state.showCutSubtitles')) {
+  throw "Cut-excluded subtitles must be hidden by default and user-toggleable in the subtitle editor"
 }
 
 if (-not $appText.Contains('screen-effect-selection-button') -or -not $appText.Contains('saveChangesBtn.addEventListener')) {

@@ -1837,6 +1837,14 @@ video {
   margin-bottom: 10px;
 }
 
+.subtitle-list-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 pre {
   margin: 0;
   overflow: auto;
@@ -1972,6 +1980,18 @@ pre {
 .subtitle-item.selected {
   border-color: var(--accent);
   box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.subtitle-item.playing {
+  border-color: #059669;
+  background: #ecfdf5;
+  box-shadow: inset 4px 0 0 #059669;
+}
+
+.subtitle-item.selected.playing {
+  border-color: #047857;
+  background: #d1fae5;
+  box-shadow: inset 4px 0 0 #047857, inset 0 0 0 1px var(--accent);
 }
 
 .subtitle-text-fields {

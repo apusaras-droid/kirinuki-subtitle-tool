@@ -92,6 +92,16 @@ python -m backend run-pipeline --config docs/cli-run-pipeline.sample.json --repo
 - `detection_mode`
   - `silencedetect` / `vad` / `hybrid`
 
+## カットと字幕同期
+
+- 元動画時間、指定範囲相対時間、完成動画時間を混同しない
+- カット後の字幕は `keep_segments` ごとに完成動画時間へ再マッピングする
+- カットで除外された字幕は削除せず、`disabled_by_cut` として保持する
+- 同時表示字幕は安定したレーンへ割り当て、終了した字幕のレーンだけを再利用する
+- 再生同期では字幕一覧を再描画せず、既存行の強調と必要最小限のスクロールだけを行う
+
+詳しい移植仕様と回帰テスト条件は `docs/カット字幕同期_再利用技術ドキュメント.md` を参照してください。
+
 ## ログの場所
 
 - グローバル監査ログ: `logs/app_audit.jsonl`
@@ -125,12 +135,14 @@ python -m backend run-pipeline --config docs/cli-run-pipeline.sample.json --repo
 - 迷ったら `docs/外部CLI連携.md` を優先する
 - 文書の優先順位は `docs/README.md` に従う
 - 出力変更では通常ASSと装飾ASSの双方をテストする
+- カットや字幕同期の変更では `tests/test_edit_plan_cut_mapping.py` と `tests/test_ass_subtitle_style.py` を確認する
 
 ## 変更前に見るべきもの
 
 - `README.md`
 - `docs/README.md`
 - `docs/外部CLI連携.md`
+- `docs/カット字幕同期_再利用技術ドキュメント.md`
 - `docs/配布仕様書_GPLv3.md`
 - `docs/spec-checklist.md`
 - `docs/実装フローチャート.md`

@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>切り抜き字幕作成ツール</title>
+    <title>切り抜き動画工房</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="app-header">
         <div class="app-brand">
-          <h1>切り抜き字幕作成ツール</h1>
+          <h1>切り抜き動画工房</h1>
           <p id="projectLabel">プロジェクト未作成</p>
           <div id="taskProgress" class="task-progress idle">
             <span id="taskProgressName">待機中</span>
@@ -512,7 +512,10 @@
         <section class="subtitle-page-panel">
           <div class="section-title">
             <h2>字幕一覧</h2>
-            <span id="subtitleCountPage">0件</span>
+            <div class="subtitle-list-controls">
+              <label class="checkbox-label"><input id="showCutSubtitlesToggle" type="checkbox" /> カット除外字幕を表示</label>
+              <span id="subtitleCountPage">0件</span>
+            </div>
           </div>
           <div id="subtitleListPage" class="subtitle-list"></div>
         </section>

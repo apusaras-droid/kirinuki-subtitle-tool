@@ -80,7 +80,7 @@ from .gemini_service import (
 )
 from .subtitle_text import normalize_bilingual_settings
 
-app = FastAPI(title="切り抜き字幕作成ツール MVP")
+app = FastAPI(title="切り抜き動画工房")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

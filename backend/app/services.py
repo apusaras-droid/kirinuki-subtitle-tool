@@ -2285,6 +2285,68 @@ def timeline_end_sec(item: dict, fallback_start: float | None = None) -> float:
     return float(item.get("output_end_sec", item.get("end_sec", start)) or start)
 
 
+def subtitles_with_collision_lanes(subtitles: list[dict]) -> list[dict]:
+    """Assign stable vertical stack lanes to overlapping captions.
+
+    A lane is assigned only inside an actual overlap group, so captions that do
+    not collide retain their configured ASS/layout position. A lane stays fixed
+    for the complete lifetime of its caption to prevent mid-caption jumps.
+    """
+    copied = [dict(item) for item in subtitles or []]
+    eligible = (
+        (index, item)
+        for index, item in enumerate(copied)
+        if item.get("enabled", True) is not False and subtitle_source_text(item)
+    )
+    ordered = sorted(
+        eligible,
+        key=lambda entry: (timeline_start_sec(entry[1]), timeline_end_sec(entry[1]), entry[0]),
+    )
+    active: list[tuple[float, dict]] = []
+    for _, item in ordered:
+        start = timeline_start_sec(item)
+        end = max(start + 0.001, timeline_end_sec(item, start))
+        active = [(active_end, active_item) for active_end, active_item in active if active_end > start + 0.0005]
+        if active:
+            used_lanes = {
+                int(active_item["subtitle_collision_lane"])
+                for _, active_item in active
+                if isinstance(active_item.get("subtitle_collision_lane"), int)
+                and int(active_item["subtitle_collision_lane"]) >= 0
+            }
+            for _, active_item in active:
+                if isinstance(active_item.get("subtitle_collision_lane"), int) and active_item["subtitle_collision_lane"] >= 0:
+                    continue
+                available = next(lane for lane in range(len(used_lanes) + 1) if lane not in used_lanes)
+                active_item["subtitle_collision_lane"] = available
+                used_lanes.add(available)
+            available = next(lane for lane in range(len(used_lanes) + 1) if lane not in used_lanes)
+            item["subtitle_collision_lane"] = available
+        active.append((end, item))
+    return copied
+
+
+def collision_layout_for_item(item: dict, layout: dict) -> tuple[dict, dict]:
+    lane = item.get("subtitle_collision_lane")
+    if not isinstance(lane, int) or lane < 0:
+        return item, layout
+    render_item = dict(item)
+    base_offset_x = float(item.get("layout_offset_x_px", layout.get("offset_x_px", 0)) or 0.0)
+    base_offset_y = float(item.get("layout_offset_y_px", layout.get("offset_y_px", 0)) or 0.0)
+    render_item.pop("layout_offset_x_px", None)
+    render_item.pop("layout_offset_y_px", None)
+    font_size = max(12.0, float(item.get("font_size", 44) or 44))
+    stack_step = max(120.0, font_size * 3.0)
+    anchor = str(layout.get("anchor", "bottom_center"))
+    stack_direction = -1.0 if anchor.startswith("bottom_") else 1.0
+    return render_item, {
+        **(layout or {}),
+        "anchor": anchor,
+        "offset_x_px": base_offset_x,
+        "offset_y_px": base_offset_y + stack_direction * lane * stack_step,
+    }
+
+
 def decoration_payload_for_plan(project_id: str, plan: dict, ass_source_srt: Path | None = None) -> dict:
     base = require_project(project_id)
     decoration_path = base / "decoration" / "decoration_project.json"
@@ -2847,7 +2909,7 @@ def generate_decoration_overlays(project_id: str, decoration: dict, canvas_size:
     if isinstance(subtitles, dict):
         subtitles = subtitles.get("subtitles", [])
     subtitles = [item for item in subtitles or [] if item.get("enabled", True)]
-    subtitles = decoration_events_with_global(decoration, subtitles)
+    subtitles = subtitles_with_collision_lanes(decoration_events_with_global(decoration, subtitles))
     defaults = load_decoration_presets()
     font_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("font_presets", []), decoration.get("font_presets"))}
     layout_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("layout_presets", []), decoration.get("layout_presets"))}
@@ -2884,6 +2946,7 @@ def generate_decoration_overlays(project_id: str, decoration: dict, canvas_size:
             frame_presets.get(item.get("frame_preset_id")) or frame_presets.get("frame_none") or {},
         )
         layout = layout_presets.get(item.get("layout_preset_id")) or default_layout
+        render_item, layout = collision_layout_for_item(item, layout)
         item_ass_override = normalize_ass_subtitle_style(item.get("ass_style"), include_enabled=True)
         item_ass_style = dict(project_ass_style)
         if item_ass_override.get("enabled"):
@@ -2894,7 +2957,7 @@ def generate_decoration_overlays(project_id: str, decoration: dict, canvas_size:
         start = timeline_start_sec(item)
         end = timeline_end_sec(item, start + 1.0)
         overlay_path = overlay_dir / f"frame_{index:04d}.png"
-        created = render_frame_overlay_image(item, frame_preset, layout, font_for_geometry, canvas_size=canvas_size, output_path=overlay_path)
+        created = render_frame_overlay_image(render_item, frame_preset, layout, font_for_geometry, canvas_size=canvas_size, output_path=overlay_path)
         if created is None:
             continue
         generated.append({
@@ -3135,7 +3198,7 @@ def build_plain_ass(
         "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
     ]
     ass_lines.extend(ass_comment_line(line, style=style_name) for line in default_ai_ass_prompt_lines())
-    for item in subtitles or []:
+    for item in subtitles_with_collision_lanes(subtitles or []):
         if item.get("enabled", True) is False or not subtitle_source_text(item):
             continue
         start = timeline_start_sec(item)
@@ -3144,12 +3207,19 @@ def build_plain_ass(
         style = dict(default_style)
         if override.get("enabled"):
             style.update({key: value for key, value in override.items() if key != "enabled"})
+        collision_lane = item.get("subtitle_collision_lane")
+        is_stacked = isinstance(collision_lane, int) and collision_lane >= 0
         alignment = int(style["alignment"])
         x, y = ass_alignment_position(
             alignment,
             (style["margin_l"], style["margin_r"], style["margin_v"]),
             canvas_size,
         )
+        if is_stacked and collision_lane > 0:
+            stack_step = max(96.0 * scale, float(style["font_size"]) * scale * 2.8)
+            row = (alignment - 1) // 3
+            direction = -1.0 if row == 0 else 1.0
+            y = max(12.0, min(float(canvas_size[1]) - 12.0, y + direction * collision_lane * stack_step))
         tags = [
             f"\\an{alignment}",
             f"\\pos({x:.1f},{y:.1f})",
@@ -3205,7 +3275,7 @@ def build_decoration_ass(
     if isinstance(subtitles, dict):
         subtitles = subtitles.get("subtitles", [])
     subtitles = [item for item in subtitles or [] if item.get("enabled", True)]
-    subtitles = decoration_events_with_global(decoration, subtitles)
+    subtitles = subtitles_with_collision_lanes(decoration_events_with_global(decoration, subtitles))
     defaults = load_decoration_presets()
     font_presets = {item.get("id"): item for item in merge_preset_list(defaults.get("font_presets", []), decoration.get("font_presets"))}
     effect_groups = {item.get("id"): item for item in merge_preset_list(defaults.get("effect_groups", []), decoration.get("effect_groups"))}
@@ -3299,6 +3369,7 @@ def build_decoration_ass(
             frame_presets.get(item.get("frame_preset_id")) or frame_presets.get("frame_none") or {},
         )
         layout = layout_presets.get(item.get("layout_preset_id")) or default_layout
+        render_item, layout = collision_layout_for_item(item, layout)
         if include_caption_text:
             item_ass_override = normalize_ass_subtitle_style(item.get("ass_style"), include_enabled=True)
             item_ass_style = dict(project_ass_style)
@@ -3318,7 +3389,7 @@ def build_decoration_ass(
             font_for_geometry = dict(font)
             font_for_geometry["family"] = font_family
             font_for_geometry["size"] = int(float(item.get("font_size") or item_ass_style["font_size"] or font.get("size", 44)))
-            geometry_item = dict(item)
+            geometry_item = dict(render_item)
             if bilingual_settings["enabled"] and item.get("translated_text"):
                 geometry_item["text"] = subtitle_display_text(item)
             geometry = frame_canvas_geometry(geometry_item, frame_preset or {}, layout, font_for_geometry, canvas_size=canvas_size)
@@ -3327,12 +3398,19 @@ def build_decoration_ass(
                 text_center_x, text_center_y = geometry["text_center"]
                 text_alignment = 5
             else:
+                collision_lane = item.get("subtitle_collision_lane")
+                is_stacked = isinstance(collision_lane, int) and collision_lane >= 0
                 text_alignment = item_ass_style["alignment"]
                 text_center_x, text_center_y = ass_alignment_position(
                     text_alignment,
                     (item_ass_style["margin_l"], item_ass_style["margin_r"], item_ass_style["margin_v"]),
                     canvas_size,
                 )
+                if is_stacked and collision_lane > 0:
+                    stack_step = max(96.0 * scale, float(item_ass_style["font_size"]) * scale * 2.8)
+                    row = (int(text_alignment) - 1) // 3
+                    direction = -1.0 if row == 0 else 1.0
+                    text_center_y = max(12.0, min(float(canvas_size[1]) - 12.0, text_center_y + direction * collision_lane * stack_step))
             if bilingual_settings["enabled"] and item.get("translated_text"):
                 wrapped_text = ass_bilingual_text(item, bilingual_settings, scale)
             else:
