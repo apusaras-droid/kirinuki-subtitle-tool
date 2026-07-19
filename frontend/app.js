@@ -423,6 +423,29 @@ const AUDIO_TIMING_PRESETS = {
     silenceThresholdDb: -35,
     minKeepSegmentDuration: 0.35,
   },
+  narration: {
+    label: "ナレーション",
+    description: "BGMなしの単独ナレーション向けです。large-v3の字幕本文を、元音声へ直接かけたVADの発話境界で補正します。",
+    engine: "whisper.cpp-vad",
+    model: "large-v3",
+    computeProfile: "auto",
+    useVad: true,
+    voiceIsolationEnabled: false,
+    useIsolatedVoiceForVad: false,
+    useIsolatedVoiceForWhisper: false,
+    alignTimestamps: true,
+    useWhisperxAlignment: false,
+    vadThreshold: 0.5,
+    minSpeechDurationSec: 0.1,
+    minSilenceDurationSec: 0.18,
+    vadMinSilenceDurationSec: 0.08,
+    speechPadSec: 0.03,
+    preMarginSec: 0.1,
+    postMarginSec: 0.22,
+    mergeSilenceGapSec: 0.18,
+    silenceThresholdDb: -40,
+    minKeepSegmentDuration: 0.3,
+  },
   bgm_precision: {
     label: "精度・BGM分離",
     description: "large-v3と声抽出を使い、分離した声をVADへ渡してBGMへの誤反応を減らします。",
@@ -477,6 +500,44 @@ const LEGACY_AUDIO_PRESET_MAP = Object.freeze({
   bgm_strong: "bgm_precision",
   whisperx_precise: "maximum",
   loose: "normal",
+});
+
+const VAD_BOUNDARY_PRESETS = Object.freeze({
+  tight: {
+    label: "1 最短",
+    description: "無音へ素早く切り替えます。字幕を短く見せたい素材向けです。",
+    vadThreshold: 0.6, minSpeechDurationSec: 0.12, minSilenceDurationSec: 0.12,
+    vadMinSilenceDurationSec: 0.06, speechPadSec: 0.01, preMarginSec: 0.05,
+    postMarginSec: 0.1, mergeSilenceGapSec: 0.1, silenceThresholdDb: -35, minKeepSegmentDuration: 0.25,
+  },
+  compact: {
+    label: "2 短め",
+    description: "短い間を残しつつ、テンポを優先します。会話字幕向けです。",
+    vadThreshold: 0.52, minSpeechDurationSec: 0.12, minSilenceDurationSec: 0.18,
+    vadMinSilenceDurationSec: 0.08, speechPadSec: 0.03, preMarginSec: 0.08,
+    postMarginSec: 0.22, mergeSilenceGapSec: 0.2, silenceThresholdDb: -35, minKeepSegmentDuration: 0.3,
+  },
+  balanced: {
+    label: "3 標準",
+    description: "発話境界と読みやすさのバランスを取る標準設定です。",
+    vadThreshold: 0.46, minSpeechDurationSec: 0.1, minSilenceDurationSec: 0.24,
+    vadMinSilenceDurationSec: 0.1, speechPadSec: 0.04, preMarginSec: 0.1,
+    postMarginSec: 0.32, mergeSilenceGapSec: 0.28, silenceThresholdDb: -38, minKeepSegmentDuration: 0.3,
+  },
+  narration: {
+    label: "4 ナレーション（推奨）",
+    description: "息継ぎで分割された発話を結合し、語尾を長めに保持します。BGMなしのナレーション向けです。",
+    vadThreshold: 0.42, minSpeechDurationSec: 0.1, minSilenceDurationSec: 0.28,
+    vadMinSilenceDurationSec: 0.12, speechPadSec: 0.05, preMarginSec: 0.12,
+    postMarginSec: 0.4, mergeSilenceGapSec: 0.35, silenceThresholdDb: -40, minKeepSegmentDuration: 0.3,
+  },
+  generous: {
+    label: "5 長め",
+    description: "小さな語尾と長めの余韻を優先します。字幕の重なりが増える場合があります。",
+    vadThreshold: 0.35, minSpeechDurationSec: 0.08, minSilenceDurationSec: 0.35,
+    vadMinSilenceDurationSec: 0.15, speechPadSec: 0.08, preMarginSec: 0.2,
+    postMarginSec: 0.6, mergeSilenceGapSec: 0.5, silenceThresholdDb: -42, minKeepSegmentDuration: 0.25,
+  },
 });
 
 function sendBrowserHeartbeat() {
@@ -1448,6 +1509,28 @@ function renderAudioPresetDescription(presetId) {
   }
 }
 
+function renderVadBoundaryPresetDescription(presetId) {
+  const preset = VAD_BOUNDARY_PRESETS[presetId] || VAD_BOUNDARY_PRESETS.balanced;
+  if ($("vadBoundaryPresetDescription")) $("vadBoundaryPresetDescription").textContent = preset.description;
+}
+
+function applyVadBoundaryPreset(presetId, options = {}) {
+  const normalized = VAD_BOUNDARY_PRESETS[presetId] ? presetId : "balanced";
+  const preset = VAD_BOUNDARY_PRESETS[normalized];
+  setInputValue("vadBoundaryPreset", normalized);
+  setChecked("useVad", true);
+  setChecked("alignTimestamps", true);
+  for (const key of [
+    "vadThreshold", "minSpeechDurationSec", "minSilenceDurationSec", "vadMinSilenceDurationSec",
+    "speechPadSec", "preMarginSec", "postMarginSec", "mergeSilenceGapSec",
+    "silenceThresholdDb", "minKeepSegmentDuration",
+  ]) {
+    setInputValue(key, preset[key]);
+  }
+  renderVadBoundaryPresetDescription(normalized);
+  if (!options.silent) setStatus(`VAD境界を「${preset.label}」にしました`);
+}
+
 function applyAudioTimingValues(values = {}, options = {}) {
   const presetId = normalizeAudioPresetId(values.local_profile_id || values.preset_id || $("audioTimingPreset")?.value || $("localTranscriptionPreset")?.value || "normal");
   const preset = AUDIO_TIMING_PRESETS[presetId] || AUDIO_TIMING_PRESETS.normal;
@@ -1473,6 +1556,11 @@ function applyAudioTimingValues(values = {}, options = {}) {
   setInputValue("mergeSilenceGapSec", next.mergeSilenceGapSec);
   setInputValue("silenceThresholdDb", next.silenceThresholdDb);
   setInputValue("minKeepSegmentDuration", next.minKeepSegmentDuration);
+  const vadBoundaryPresetId = VAD_BOUNDARY_PRESETS[values.vad_boundary_preset_id]
+    ? values.vad_boundary_preset_id
+    : ($("vadBoundaryPreset")?.value || "balanced");
+  setInputValue("vadBoundaryPreset", vadBoundaryPresetId);
+  renderVadBoundaryPresetDescription(vadBoundaryPresetId);
   renderAudioPresetDescription(presetId);
   syncAudioSettingsControls();
   if (!options.silent) {
@@ -1488,6 +1576,7 @@ function audioTimingSettings() {
   return {
     preset_id: normalizeAudioPresetId($("audioTimingPreset")?.value || $("localTranscriptionPreset")?.value || "normal"),
     local_profile_id: normalizeAudioPresetId($("localTranscriptionPreset")?.value || $("audioTimingPreset")?.value || "normal"),
+    vad_boundary_preset_id: VAD_BOUNDARY_PRESETS[$("vadBoundaryPreset")?.value] ? $("vadBoundaryPreset").value : "balanced",
     engine: $("engine")?.value || "whisper.cpp",
     model: $("model")?.value || "small",
     compute_profile: $("computeProfile")?.value || "auto",
@@ -2811,10 +2900,14 @@ function syncAudioSettingsControls() {
 
 function normalizeIntervalList(intervals) {
   return (intervals || [])
-    .map((item) => ({
-      src_start: Math.min(Number(item.src_start) || 0, Number(item.src_end) || 0),
-      src_end: Math.max(Number(item.src_start) || 0, Number(item.src_end) || 0),
-    }))
+    .map((item) => {
+      const start = Number(item.src_start ?? item.start_sec ?? item.start ?? item.source_start_sec ?? 0);
+      const end = Number(item.src_end ?? item.end_sec ?? item.end ?? item.source_end_sec ?? start);
+      return {
+        src_start: Math.min(start, end),
+        src_end: Math.max(start, end),
+      };
+    })
     .filter((item) => Number.isFinite(item.src_start) && Number.isFinite(item.src_end) && item.src_end > item.src_start)
     .sort((a, b) => a.src_start - b.src_start || a.src_end - b.src_end);
 }
@@ -9673,7 +9766,9 @@ function addGeminiProposalRow(container, category, item, title, body, meta) {
   row.className = "ai-proposal-item";
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
-  checkbox.checked = category !== "cut" || item.action !== "remove";
+  // Only remove proposals become cut intervals. Keep/highlight entries remain
+  // visible for review but must not be selected as executable cuts.
+  checkbox.checked = category !== "cut" || item.action === "remove";
   checkbox.dataset.geminiCategory = category;
   checkbox.dataset.geminiId = item.id || "";
   const content = document.createElement("span");
@@ -9716,9 +9811,11 @@ function renderGeminiProposal() {
     subtitleCount += 1;
   }
   let cutCount = 0;
+  let removableCutCount = 0;
   for (const item of proposal?.cut_proposals || []) {
     addGeminiProposalRow(cutList, "cut", item, `${item.action}: ${fmtTime(item.start_sec)} - ${fmtTime(item.end_sec)}`, item.reason || "", `信頼度 ${Math.round((Number(item.confidence) || 0) * 100)}%`);
     cutCount += 1;
+    if (item.action === "remove") removableCutCount += 1;
   }
   if (!subtitleCount) {
     const empty = document.createElement("div");
@@ -9733,7 +9830,7 @@ function renderGeminiProposal() {
     cutList.appendChild(empty);
   }
   if ($("geminiSubtitleProposalCount")) $("geminiSubtitleProposalCount").textContent = `${subtitleCount}件`;
-  if ($("geminiCutProposalCount")) $("geminiCutProposalCount").textContent = `${cutCount}件`;
+  if ($("geminiCutProposalCount")) $("geminiCutProposalCount").textContent = `削除候補 ${removableCutCount}件 / 全提案 ${cutCount}件`;
 }
 
 async function loadGeminiProposal() {
@@ -9772,6 +9869,9 @@ async function applySelectedGeminiProposal({ subtitle = true, cut = true, naviga
   const chapterIds = subtitle ? selectedGeminiProposalIds("chapter") : [];
   const cutIds = cut ? selectedGeminiProposalIds("cut") : [];
   const selectedCuts = (state.geminiProposal?.cut_proposals || []).filter((item) => cutIds.includes(item.id) && item.action === "remove");
+  if (cut && !subtitle && !selectedCuts.length) {
+    throw new Error("カット編集へ登録するremove区間を1件以上選択してください");
+  }
   if (selectedCuts.length) {
     state.manualCutSegments = normalizeIntervalList([
       ...(state.manualCutSegments || []),
@@ -10678,12 +10778,20 @@ $("audioTimingPreset").addEventListener("change", () =>
 $("applyAudioTimingPresetBtn").addEventListener("click", () =>
   runStep("字幕プリセット適用", () => selectLocalTranscriptionPreset($("audioTimingPreset").value))
 );
+$("applyVadBoundaryPresetBtn")?.addEventListener("click", () =>
+  runStep("VAD境界プリセット適用", async () => {
+    applyVadBoundaryPreset($("vadBoundaryPreset").value);
+    if (state.projectId && (state.transcript || state.editPlan)) invalidateWorkflowFrom("STEP_TRANSCRIBE");
+    if (state.projectId) await saveProjectSettings();
+  })
+);
+$("vadBoundaryPreset")?.addEventListener("change", () => renderVadBoundaryPresetDescription($("vadBoundaryPreset").value));
 $("finalOutputMode")?.addEventListener("change", () => saveProjectSettings().catch(() => {}));
 $("outputProfile")?.addEventListener("change", () => saveProjectSettings().catch(() => {}));
 $("finalOutputMode")?.addEventListener("change", () => invalidateWorkflowFrom("STEP_EXPORT"));
 $("outputProfile")?.addEventListener("change", () => invalidateWorkflowFrom("STEP_EXPORT"));
 const transcriptionSettingIds = [
-  "transcriptionMode", "computeProfile", "engine", "model", "language", "audioTimingPreset", "localTranscriptionPreset", "useVad",
+  "transcriptionMode", "computeProfile", "engine", "model", "language", "audioTimingPreset", "localTranscriptionPreset", "vadBoundaryPreset", "useVad",
   "voiceIsolationEnabled", "useIsolatedVoiceForVad", "useIsolatedVoiceForWhisper",
   "alignTimestamps", "useWhisperxAlignment", "vadThreshold", "minSpeechDurationSec",
   "minSilenceDurationSec", "vadMinSilenceDurationSec", "speechPadSec", "preMarginSec",

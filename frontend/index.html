@@ -89,6 +89,7 @@
             <select id="localTranscriptionPreset">
               <option value="fast">最速</option>
               <option value="normal" selected>普通</option>
+              <option value="narration">ナレーション（BGMなし）</option>
               <option value="bgm_precision">精度・BGM分離</option>
               <option value="maximum">最高・精度最優先</option>
             </select>
@@ -349,7 +350,7 @@
           <label>カットへの指示文<textarea id="geminiCutInstructions" rows="10" placeholder="削除したい内容、残したい間、抽出条件などを指定してください。"></textarea></label>
           <div class="settings-actions">
             <button id="geminiCutAnalyzeBtn" type="button" class="primary">カット提案を送信</button>
-            <button id="applyGeminiCutBtn" type="button">選択したカット提案を採用</button>
+            <button id="applyGeminiCutBtn" type="button">選択したremove区間をカット編集へ登録</button>
           </div>
           <div id="geminiCutSummary" class="ai-summary">カット提案はまだありません。</div>
           <div id="geminiCutProposalList" class="ai-proposal-list"></div>
@@ -649,6 +650,7 @@
                 <select id="audioTimingPreset">
                   <option value="fast">最速</option>
                   <option value="normal" selected>普通</option>
+                  <option value="narration">ナレーション（BGMなし）</option>
                   <option value="bgm_precision">精度・BGM分離</option>
                   <option value="maximum">最高・精度最優先</option>
                 </select>
@@ -656,6 +658,19 @@
               <button id="applyAudioTimingPresetBtn" type="button">プリセットを適用</button>
             </div>
             <p id="audioTimingPresetDescription" class="settings-note">smallモデルとVAD時刻補正を使う標準設定です。</p>
+            <div class="settings-actions">
+              <label>VAD境界プリセット
+                <select id="vadBoundaryPreset">
+                  <option value="tight">1 最短</option>
+                  <option value="compact">2 短め</option>
+                  <option value="balanced" selected>3 標準</option>
+                  <option value="narration">4 ナレーション（推奨）</option>
+                  <option value="generous">5 長め</option>
+                </select>
+              </label>
+              <button id="applyVadBoundaryPresetBtn" type="button">VAD設定へ反映</button>
+            </div>
+            <p id="vadBoundaryPresetDescription" class="settings-note">発話境界と読みやすさのバランスを取る標準設定です。</p>
             <div class="settings-grid">
               <label class="checkbox-label"><input id="useVad" type="checkbox" checked /> VADを使う</label>
               <label class="checkbox-label"><input id="voiceIsolationEnabled" type="checkbox" /> 声抽出を使う</label>
@@ -674,7 +689,7 @@
               <label>音量無音しきい値dB<input id="silenceThresholdDb" type="number" value="-35" min="-80" max="-5" step="1" /></label>
               <label>最小キープ秒<input id="minKeepSegmentDuration" type="number" value="0.35" min="0.05" max="5" step="0.05" /></label>
             </div>
-            <p class="settings-note">厳密モードは台詞頭のズレを減らす軽量設定です。BGMにVADが引っ張られる場合は「BGMが強い動画」、時間がかかっても字幕単位の精密補正を試す場合は「精密補正・重い」を使います。</p>
+            <p class="settings-note">数値を手動変更した場合は、その数値が優先してプロジェクトへ保存されます。字幕を再作成すると新しいVAD設定が反映されます。</p>
           </div>
           <div class="settings-section">
             <h3>字幕感情プリセット</h3>

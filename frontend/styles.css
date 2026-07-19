@@ -1711,11 +1711,13 @@ video {
 
 .subtitle-overlay {
   position: absolute;
-  left: 8%;
-  right: 8%;
+  left: 10%;
+  right: 10%;
   bottom: 54px;
   box-sizing: border-box;
-  max-width: 84%;
+  width: 80%;
+  max-width: 80%;
+  min-width: 0;
   text-align: center;
   color: #fff;
   font-size: 28px;
@@ -1730,8 +1732,11 @@ video {
 
 .subtitle-overlay-line {
   display: block;
+  max-width: 100%;
   line-height: 1.25;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .range-grid,

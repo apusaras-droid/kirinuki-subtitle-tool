@@ -57,7 +57,7 @@ class GeminiProposalApplyTests(unittest.TestCase):
             fake_client = SimpleNamespace(files=FakeFiles(), interactions=FakeInteractions())
             with (
                 patch.object(gemini_service, "require_project", return_value=base),
-                patch.object(gemini_service, "load_project_edit_plan", return_value=plan),
+                patch.object(gemini_service, "ensure_project_edit_plan", return_value=plan) as ensure_plan,
                 patch.object(gemini_service, "_api_key", return_value="test-key"),
                 patch.object(gemini_service, "_read_config", return_value={"model": "gemini-3.5-flash"}),
                 patch.object(gemini_service, "_knowledge_base_instruction", return_value="DBなし"),
@@ -67,6 +67,7 @@ class GeminiProposalApplyTests(unittest.TestCase):
                 result = gemini_service.analyze_project_with_gemini("sample", task="cut")
 
         proposal = result["proposal"]
+        ensure_plan.assert_called_once_with("sample")
         self.assertEqual(proposal["subtitle_edits"], existing["subtitle_edits"])
         self.assertEqual(proposal["cut_proposals"][0]["action"], "remove")
         self.assertEqual(proposal["last_task"], "cut")
@@ -249,7 +250,7 @@ class GeminiProposalApplyTests(unittest.TestCase):
             (base / "ai" / "gemini_proposal.json").write_text(json.dumps(proposal), encoding="utf-8")
             with (
                 patch.object(gemini_service, "require_project", return_value=base),
-                patch.object(gemini_service, "load_project_edit_plan", return_value=plan),
+                patch.object(gemini_service, "ensure_project_edit_plan", return_value=plan) as ensure_plan,
                 patch.object(gemini_service, "audit_event"),
             ):
                 result = gemini_service.apply_gemini_proposal(
@@ -257,6 +258,7 @@ class GeminiProposalApplyTests(unittest.TestCase):
                 )
 
         merged = result["edit_plan"]["subtitles"]
+        ensure_plan.assert_called_once_with("sample")
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["text"], "こんにちは")
         self.assertEqual(merged[0]["range_relative_start_sec"], 1.0)

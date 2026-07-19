@@ -120,8 +120,30 @@ def test_build_plain_ass_uses_ass_style_without_decoration_fields():
             output = build_plain_ass("sample", [subtitle], base / "plain.ass")
 
         text = output.read_text(encoding="utf-8")
+        assert "WrapStyle: 0" in text
         dialogue = next(line for line in text.splitlines() if line.startswith("Dialogue:"))
         assert r"\fnNoto Serif JP\fs52" in dialogue
         assert r"\1c&H00DEF7FF&\3c&H00332211&\bord4" in dialogue
         assert "frame_bubble_jagged" not in text
         assert "effect_heart" not in text
+
+
+def test_build_decoration_ass_enables_smart_caption_wrapping():
+    with TemporaryDirectory() as temp_dir:
+        base = Path(temp_dir)
+        source_srt = base / "edited.srt"
+        source_srt.write_text(
+            "1\n00:00:01,000 --> 00:00:03,000\n長い字幕の折り返し確認\n",
+            encoding="utf-8",
+        )
+        with (
+            patch("backend.app.services.require_project", return_value=base),
+            patch("backend.app.services.project_info", return_value={"ui_state": {}}),
+        ):
+            output = build_decoration_ass(
+                "sample",
+                {"source_srt": str(source_srt), "events": []},
+                base / "decorated.ass",
+            )
+
+        assert "WrapStyle: 0" in output.read_text(encoding="utf-8")

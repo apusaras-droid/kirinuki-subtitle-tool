@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from .audit import audit_event
-from .services import APP_DATA_DIR, atomic_write_json, load_project_edit_plan, require_project
+from .services import APP_DATA_DIR, atomic_write_json, ensure_project_edit_plan, load_project_edit_plan, require_project
 from .srt import write_srt
 from .subtitle_text import DISPLAY_MODES, normalize_bilingual_settings
 
@@ -993,7 +993,7 @@ def analyze_project_with_gemini(
     audio_path = base / "audio" / "source_range.wav"
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="解析用音声がありません。先に文字起こしを実行してください")
-    plan = load_project_edit_plan(project_id)
+    plan = ensure_project_edit_plan(project_id)
     subtitles = _source_subtitles(plan)
     if not subtitles:
         raise HTTPException(status_code=400, detail="比較対象の字幕がありません")
@@ -1117,7 +1117,7 @@ def apply_gemini_proposal(
     proposal = load_gemini_proposal(project_id)
     if not proposal:
         raise HTTPException(status_code=404, detail="Gemini提案がありません")
-    plan = load_project_edit_plan(project_id)
+    plan = ensure_project_edit_plan(project_id)
     subtitles = list(plan.get("subtitles") or [])
     by_id = {str(item.get("id")): item for item in subtitles}
     selected_edits = {str(value) for value in subtitle_edit_ids}

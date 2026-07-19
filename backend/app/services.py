@@ -3096,7 +3096,8 @@ def build_plain_ass(
         "ScriptType: v4.00+",
         f"PlayResX: {int(canvas_size[0])}",
         f"PlayResY: {int(canvas_size[1])}",
-        "WrapStyle: 2",
+        # Smart wrapping keeps long captions inside the PlayRes margins.
+        "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",
         "",
         "[V4+ Styles]",
@@ -3231,7 +3232,8 @@ def build_decoration_ass(
         "ScriptType: v4.00+",
         f"PlayResX: {int(play_res_x)}",
         f"PlayResY: {int(play_res_y)}",
-        "WrapStyle: 2",
+        # Keep decoration ASS captions consistent with the browser preview.
+        "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",
         "",
         "[V4+ Styles]",
