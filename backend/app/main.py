@@ -76,7 +76,9 @@ from .gemini_service import (
     save_gemini_config,
     save_project_knowledge_base,
     transcribe_project_with_gemini,
+    translate_project_subtitles,
 )
+from .subtitle_text import normalize_bilingual_settings
 
 app = FastAPI(title="切り抜き字幕作成ツール MVP")
 app.add_middleware(
@@ -173,6 +175,8 @@ async def audit_requests(request: Request, call_next):
             "elapsed_ms": elapsed_ms,
         },
     )
+    if request.url.path in {"/", "/index.html", "/app.js", "/styles.css"}:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 
 
@@ -328,6 +332,7 @@ class ProjectSettingsRequest(BaseModel):
     transcription_mode: str | None = None
     subtitle_click_playback_mode: str | None = None
     ass_subtitle_defaults: dict[str, Any] | None = None
+    bilingual_subtitle_settings: dict[str, Any] | None = None
 
 
 class AppSettingsRequest(BaseModel):
@@ -369,6 +374,15 @@ class GeminiTranscribeRequest(BaseModel):
     project_id: str
     model: str | None = None
     language: str = "ja"
+    bilingual_subtitle_settings: dict[str, Any] | None = None
+
+
+class GeminiTranslateRequest(BaseModel):
+    project_id: str
+    model: str | None = None
+    source_language: str = "en"
+    target_language: str = "ja"
+    display_mode: str = "source_above"
 
 
 class GeminiApplyRequest(BaseModel):
@@ -524,6 +538,8 @@ def update_project_settings(req: ProjectSettingsRequest):
         ui_state["subtitle_click_playback_mode"] = req.subtitle_click_playback_mode
     if req.ass_subtitle_defaults is not None:
         ui_state["ass_subtitle_defaults"] = normalize_ass_subtitle_style(req.ass_subtitle_defaults)
+    if req.bilingual_subtitle_settings is not None:
+        ui_state["bilingual_subtitle_settings"] = normalize_bilingual_settings(req.bilingual_subtitle_settings)
     updates["ui_state"] = ui_state
     updated = update_project_info(req.project_id, updates)
     return {"project": updated}
@@ -658,7 +674,23 @@ def api_gemini_analyze(req: GeminiAnalyzeRequest):
 
 @app.post("/api/ai/gemini/transcribe")
 def api_gemini_transcribe(req: GeminiTranscribeRequest):
-    return transcribe_project_with_gemini(req.project_id, req.model, req.language)
+    return transcribe_project_with_gemini(
+        req.project_id,
+        req.model,
+        req.language,
+        req.bilingual_subtitle_settings,
+    )
+
+
+@app.post("/api/ai/gemini/translate-subtitles")
+def api_gemini_translate_subtitles(req: GeminiTranslateRequest):
+    return translate_project_subtitles(
+        req.project_id,
+        req.model,
+        req.source_language,
+        req.target_language,
+        req.display_mode,
+    )
 
 
 @app.post("/api/ai/gemini/apply")

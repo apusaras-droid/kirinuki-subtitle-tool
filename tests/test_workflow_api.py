@@ -121,6 +121,30 @@ class ProjectWorkflowApiTests(unittest.TestCase):
         self.assertEqual(style["outline_width"], 0)
         self.assertEqual(style["alignment"], 9)
 
+    def test_normalizes_bilingual_subtitle_settings(self):
+        request = ProjectSettingsRequest(
+            project_id="sample_project",
+            bilingual_subtitle_settings={
+                "enabled": True,
+                "source_language": "EN",
+                "target_language": "JA",
+                "display_mode": "translation_above",
+                "source_style": {"font_size": 999, "color": "invalid"},
+            },
+        )
+        with (
+            patch("backend.app.main.project_info", return_value={"ui_state": {}}),
+            patch("backend.app.main.update_project_info") as update,
+        ):
+            update.side_effect = lambda project_id, values: values
+            result = update_project_settings(request)
+        settings = result["project"]["ui_state"]["bilingual_subtitle_settings"]
+        self.assertTrue(settings["enabled"])
+        self.assertEqual(settings["source_language"], "en")
+        self.assertEqual(settings["display_mode"], "translation_above")
+        self.assertEqual(settings["source_style"]["font_size"], 160)
+        self.assertEqual(settings["source_style"]["color"], "#FFF4C2")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ python -m backend --help
 - `detect-silence`
 - `create-edit-plan`
 - `save-subtitles`
+- `translate-subtitles`
 - `preview`
 - `export`
 - `cleanup`
@@ -33,6 +34,8 @@ python -m backend --help
 5. `create-edit-plan` でカット案を作る
 6. `preview` で仮出力を作る
 7. `export` で最終出力を作る
+
+英語原文と日本語訳を二段字幕にする場合は、`transcribe --language en` の後に `translate-subtitles` を実行します。
 
 ## 設計の前提
 
@@ -91,6 +94,16 @@ python -m backend save-subtitles --project-id "project_xxx" --subtitles-json "su
 
 ## 例8: 仮出力 / 最終出力
 
+英語字幕をGeminiで日本語へ翻訳し、原文を上・日本語を下に保持する例:
+
+```powershell
+python -m backend translate-subtitles --project-id "project_xxx" --source-language en --target-language ja --display-mode source_above
+```
+
+Gemini APIキーはGUIの詳細設定で保存するか、環境変数 `GEMINI_API_KEY` で指定します。原文は `source_text`、訳文は `translated_text` に分離保存され、時刻は変更されません。
+
+## 例9: 仮出力 / 最終出力
+
 ```powershell
 python -m backend preview --project-id "project_xxx"
 python -m backend export --project-id "project_xxx" --subtitle-mode external --subtitle-format plain_ass
@@ -101,7 +114,7 @@ python -m backend cleanup --project-id "project_xxx" --keep-preview
 
 `--subtitle-mode` は `external`（別ファイル）、`burn`（映像へ焼き込み）、`embed`（切替可能な字幕トラック）の3種類です。`--subtitle-format` は `plain_ass`（通常ASS）、`ass`（装飾ASS）、互換用の `srt` を指定できます。ASS埋め込みはスタイル保持のためMKVのASSトラックとして出力されます。通常ASSは詳細設定と字幕個別ASS設定だけを使い、デコレーション画面の設定を含みません。
 
-## 例9: 一括実行
+## 例10: 一括実行
 
 ```powershell
 python -m backend run-pipeline --config "docs/cli-run-pipeline.sample.json" --report "logs/report.json" --auto-cleanup

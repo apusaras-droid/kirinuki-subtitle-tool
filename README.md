@@ -138,6 +138,7 @@ GUI を使わずに一括処理したい場合は `run-pipeline` を使います
 波形解析や字幕補正の詳細は `projects/<project_id>/temp/logs/processing.jsonl` に残ります。
 JSON 設定で実行する例は [docs/cli-run-pipeline.sample.json](docs/cli-run-pipeline.sample.json) を参照してください。
 `run-pipeline` は `subtitles` 配列を受け取れるので、AI や外部オーケストレータから文字起こしを省いて編集・出力だけ回すこともできます。
+英語字幕は `translate-subtitles` でGeminiによる日本語訳を追加でき、原文と訳文を分離保持した二段SRT/ASSとして出力できます。
 Whisper の既定エンジンは `whisper.cpp` です。Whisper は本文と大まかな時刻の取得に使い、編集は無音削除後のタイムラインに再マッピングします。
 無音・非発話区間の検出はプリセットに応じて `silencedetect` または Silero VAD を使います。BGMが強い素材では、解析用の声抽出を併用できます。
 `run-pipeline --auto-cleanup` で処理後の重い中間ファイルを自動整理できます。

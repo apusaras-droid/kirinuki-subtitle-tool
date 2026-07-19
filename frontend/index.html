@@ -94,6 +94,7 @@
             </select>
             <small id="localTranscriptionPresetDescription" class="preset-description">smallモデルとVAD時刻補正を使う標準設定です。</small>
           </label>
+          <label id="geminiBilingualControl" class="checkbox-label hidden-panel"><input id="geminiBilingualDirect" type="checkbox" /> 英語原文＋日本語訳を上下表示</label>
           <span id="transcriptionModeBadge" class="processing-badge local">ローカル + 外部AI</span>
         </div>
       </section>
@@ -446,6 +447,7 @@
           <button id="subtitlePageBackBtn" type="button">カット編集へ戻る</button>
           <button id="subtitleSyncScenesBtn" type="button">字幕からシーン再同期</button>
           <button id="extendSubtitleTimesBtn" type="button">全字幕を前後0.5秒延長</button>
+          <button id="translateSubtitlesBtn" type="button">英語字幕を日本語へ翻訳</button>
           <button id="saveSubtitlesBtn" type="button" class="primary" disabled>字幕編集を確定してデコレーションへ</button>
         </div>
       </div>
@@ -619,6 +621,26 @@
               <span id="geminiSettingsStatus">未設定</span>
             </div>
             <p class="settings-note">キーは data/private/gemini.json に分離保存され、Git管理とプロジェクト保存の対象外です。</p>
+          </div>
+          <div class="settings-section">
+            <h3>二言語字幕</h3>
+            <div class="settings-grid">
+              <label class="checkbox-label"><input id="bilingualSubtitlesEnabled" type="checkbox" /> 原文と翻訳を二段表示する</label>
+              <label>原文言語<input id="bilingualSourceLanguage" type="text" value="en" /></label>
+              <label>翻訳先言語<input id="bilingualTargetLanguage" type="text" value="ja" /></label>
+              <label>表示順<select id="bilingualDisplayMode"><option value="source_above">原文を上・翻訳を下</option><option value="translation_above">翻訳を上・原文を下</option><option value="source_only">原文のみ</option><option value="translation_only">翻訳のみ</option></select></label>
+              <label>原文フォント<select id="bilingualSourceFontName"></select></label>
+              <label>原文サイズ<input id="bilingualSourceFontSize" type="number" value="34" min="8" max="160" step="1" /></label>
+              <label>原文色<input id="bilingualSourceColor" type="color" value="#fff4c2" /></label>
+              <label>翻訳フォント<select id="bilingualTargetFontName"></select></label>
+              <label>翻訳サイズ<input id="bilingualTargetFontSize" type="number" value="44" min="8" max="160" step="1" /></label>
+              <label>翻訳色<input id="bilingualTargetColor" type="color" value="#ffffff" /></label>
+            </div>
+            <div class="settings-actions">
+              <button id="applyBilingualSettingsBtn" type="button" class="primary">二言語字幕設定を保存</button>
+              <span id="bilingualSettingsStatus">未使用</span>
+            </div>
+            <p class="settings-note">英語音声は文字起こし言語を en に設定してください。Whisperが原文と時刻を作り、字幕編集画面の翻訳ボタンでGeminiが同じ区間の日本語訳を追加します。</p>
           </div>
           <div class="settings-section">
             <h3>音声解析</h3>

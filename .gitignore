@@ -17,6 +17,7 @@ tools/whisper.cpp/models/*.bin
 data/private/
 data/settings/
 data/shared/.*.history/
+data/shared/transcription_runtime_history.json
 temp_*/
 temp_*
 diff_*.txt

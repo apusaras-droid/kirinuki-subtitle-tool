@@ -1608,6 +1608,62 @@ label {
   color: var(--muted);
 }
 
+.screen-effect-select-chip {
+  cursor: pointer;
+  user-select: none;
+}
+
+.screen-effect-select-chip:hover,
+.screen-effect-select-chip:focus-visible,
+.screen-effect-select-chip.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #eef6ff;
+  outline: none;
+}
+
+.screen-effect-selection-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.screen-effect-mode-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.screen-effect-mode-toolbar button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.screen-effect-selection-button {
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-effect-selection-button.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #eef6ff;
+}
+
+.screen-effect-edit-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 8px 0 2px;
+  background: #fff;
+  border-top: 1px solid var(--line);
+}
+
 .settings-section {
   border-top: 1px solid var(--line);
   padding-top: 10px;
@@ -1670,6 +1726,12 @@ video {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
+}
+
+.subtitle-overlay-line {
+  display: block;
+  line-height: 1.25;
+  white-space: pre-wrap;
 }
 
 .range-grid,
@@ -1905,6 +1967,26 @@ pre {
 .subtitle-item.selected {
   border-color: var(--accent);
   box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.subtitle-text-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.subtitle-text-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.subtitle-text-fields textarea {
+  min-height: 74px;
+  color: var(--text);
+  font-size: 14px;
 }
 
 .subtitle-meta {

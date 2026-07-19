@@ -163,6 +163,71 @@ class GeminiProposalApplyTests(unittest.TestCase):
         self.assertIn("話者ラベルは一切返さず", prompt)
         self.assertIn("禁止事項", prompt)
 
+    def test_direct_transcription_can_return_bilingual_subtitles(self):
+        response = {
+            "summary": "greeting",
+            "segments": [{
+                "start_sec": 1.0,
+                "end_sec": 2.5,
+                "source_text": "How are you?",
+                "translated_text": "元気ですか？",
+            }],
+        }
+        captured_request = {}
+
+        class FakeFiles:
+            def upload(self, *, file):
+                return SimpleNamespace(uri="fake://audio", mime_type="audio/wav", name="files/fake")
+
+            def delete(self, *, name):
+                return None
+
+        class FakeInteractions:
+            def create(self, **kwargs):
+                captured_request.update(kwargs)
+                return SimpleNamespace(output_text=json.dumps(response, ensure_ascii=False))
+
+        fake_client = SimpleNamespace(files=FakeFiles(), interactions=FakeInteractions())
+        settings = {
+            "enabled": True,
+            "source_language": "en",
+            "target_language": "ja",
+            "display_mode": "source_above",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            (base / "audio").mkdir()
+            (base / "audio" / "source_range.wav").write_bytes(b"RIFF-test")
+            with (
+                patch.object(gemini_service, "require_project", return_value=base),
+                patch.object(gemini_service, "_api_key", return_value="test-key"),
+                patch.object(
+                    gemini_service,
+                    "_read_config",
+                    return_value={"model": "gemini-3.5-flash", "speaker_labels_enabled": False},
+                ),
+                patch("google.genai.Client", return_value=fake_client),
+                patch.object(gemini_service, "audit_event"),
+            ):
+                result = gemini_service.transcribe_project_with_gemini(
+                    "sample",
+                    language="en",
+                    bilingual_subtitle_settings=settings,
+                )
+            srt = (base / "subtitles" / "original.srt").read_text(encoding="utf-8")
+
+        subtitle = result["subtitles"][0]
+        schema = captured_request["response_format"]["schema"]["properties"]["segments"]["items"]
+        prompt = captured_request["input"][0]["text"]
+        self.assertEqual(subtitle["text"], "How are you?")
+        self.assertEqual(subtitle["source_text"], "How are you?")
+        self.assertEqual(subtitle["translated_text"], "元気ですか？")
+        self.assertTrue(subtitle["bilingual_enabled"])
+        self.assertIn("source_text", schema["required"])
+        self.assertIn("translated_text", schema["required"])
+        self.assertIn("How are you?\n元気ですか？", srt)
+        self.assertIn("原文と翻訳のsegment数", prompt)
+
     def test_merge_uses_existing_timeline_and_returns_selected_cut(self):
         plan = {
             "subtitles": [

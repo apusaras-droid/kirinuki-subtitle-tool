@@ -61,6 +61,11 @@ const state = {
       shadow_depth: 1, bold: true, italic: false, alignment: 2,
       margin_l: 60, margin_r: 60, margin_v: 48, spacing: 0,
     },
+    bilingual_subtitle_settings: {
+      enabled: false, source_language: "en", target_language: "ja", display_mode: "source_above",
+      source_style: { font_name: "Noto Sans JP", font_size: 34, color: "#FFF4C2" },
+      target_style: { font_name: "Noto Sans JP", font_size: 44, color: "#FFFFFF" },
+    },
   },
   projectScenes: [],
   presets: {
@@ -90,6 +95,7 @@ const state = {
   frameSyncMode: "live",
   screenEffectSelectedStackId: "",
   screenEffectCategoryFilter: "all",
+  screenEffectPanelMode: "add",
   zoomBox: {
     active: false,
     centerX: 0.5,
@@ -121,6 +127,15 @@ const ASS_SUBTITLE_DEFAULTS = Object.freeze({
   margin_r: 60,
   margin_v: 48,
   spacing: 0,
+});
+
+const BILINGUAL_SUBTITLE_DEFAULTS = Object.freeze({
+  enabled: false,
+  source_language: "en",
+  target_language: "ja",
+  display_mode: "source_above",
+  source_style: Object.freeze({ font_name: "Noto Sans JP", font_size: 34, color: "#FFF4C2" }),
+  target_style: Object.freeze({ font_name: "Noto Sans JP", font_size: 44, color: "#FFFFFF" }),
 });
 
 const ASS_SUBTITLE_PRESETS = Object.freeze([
@@ -296,9 +311,8 @@ function canEnterWorkflowPage(page) {
   if (page === "decoration" && workflowStore.getState().stepStatus.STEP_SUBTITLE_EDIT !== "completed") {
     return { allowed: false, reason: "先に字幕編集を確定してください" };
   }
-  if (page === "export" && !(state.editPlanPath || state.editPlan)) {
-    return { allowed: false, reason: "先にカット案を作成してください" };
-  }
+  // The export page is also where users choose output options. A missing
+  // edit plan is built lazily before preview-to-export or export execution.
   return { allowed: true, reason: "" };
 }
 
@@ -335,12 +349,26 @@ function invalidateWorkflowAfter(stepId) {
   scheduleWorkflowSave();
 }
 
+function appliedScreenEffectCount(decoration = state.decorationProject) {
+  const stacks = new Map(
+    (decoration?.screen_effect_stacks || [])
+      .filter((stack) => stack?.id && Array.isArray(stack.effects) && stack.effects.length)
+      .map((stack) => [String(stack.id), stack])
+  );
+  const targets = decoration?.screen_effect_targets || {};
+  const assignedIds = [
+    ...(targets.global_stack_ids || []),
+    ...Object.values(targets.scene_stack_ids || {}).flatMap((stackIds) => stackIds || []),
+  ];
+  return assignedIds.filter((stackId) => stacks.has(String(stackId || ""))).length;
+}
+
 function renderExportSnapshotSummary() {
   const summary = $("exportSnapshotSummary");
   if (!summary) return;
   const subtitles = subtitleItems();
   const segments = (state.editPlan?.segments || []).filter((segment) => segment.enabled !== false);
-  const effects = state.decorationProject?.screen_effect_stacks?.length || 0;
+  const effects = appliedScreenEffectCount();
   summary.textContent = state.projectId
     ? `${projectDisplayName()} / 字幕 ${subtitles.length}件 / 残す区間 ${segments.length}件 / 画面効果 ${effects}件`
     : "プロジェクトを作成してください。";
@@ -787,7 +815,7 @@ function setBusy(busy) {
 }
 
 function setProjectReady(ready) {
-  for (const id of ["saveProjectBtn", "overwriteProjectBtn", "saveSubtitlesBtn", "manualPreviewBtn", "previewRenderBtn", "exportBtn", "exportCustomBtn", "openExportDirectoryBtn", "transcribeOnlyBtn", "skipSubtitlesBtn", "transcribePlanBtn", "previewGeneratedSubtitlesBtn", "probeBtn", "extractBtn", "transcribeBtn", "silenceBtn"]) {
+  for (const id of ["saveProjectBtn", "overwriteProjectBtn", "saveSubtitlesBtn", "translateSubtitlesBtn", "manualPreviewBtn", "previewRenderBtn", "exportBtn", "exportCustomBtn", "openExportDirectoryBtn", "transcribeOnlyBtn", "skipSubtitlesBtn", "transcribePlanBtn", "previewGeneratedSubtitlesBtn", "probeBtn", "extractBtn", "transcribeBtn", "silenceBtn"]) {
     const control = $(id);
     if (control) control.disabled = !ready;
   }
@@ -876,6 +904,102 @@ function normalizeAssSubtitleStyle(raw = {}, { includeEnabled = false } = {}) {
   };
   if (includeEnabled) style.enabled = Boolean(source.enabled);
   return style;
+}
+
+function normalizeBilingualSubtitleSettings(raw = {}) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const normalizeStyle = (value, fallback) => {
+    const style = value && typeof value === "object" ? value : {};
+    const color = /^#[0-9a-f]{6}$/i.test(String(style.color || "")) ? String(style.color).toUpperCase() : fallback.color;
+    return {
+      font_name: String(style.font_name || fallback.font_name),
+      font_size: Math.min(160, Math.max(8, Math.round(Number(style.font_size ?? fallback.font_size) || fallback.font_size))),
+      color,
+    };
+  };
+  const displayModes = new Set(["source_above", "translation_above", "source_only", "translation_only"]);
+  return {
+    enabled: Boolean(source.enabled),
+    source_language: String(source.source_language || BILINGUAL_SUBTITLE_DEFAULTS.source_language).trim().toLowerCase(),
+    target_language: String(source.target_language || BILINGUAL_SUBTITLE_DEFAULTS.target_language).trim().toLowerCase(),
+    display_mode: displayModes.has(source.display_mode) ? source.display_mode : BILINGUAL_SUBTITLE_DEFAULTS.display_mode,
+    source_style: normalizeStyle(source.source_style, BILINGUAL_SUBTITLE_DEFAULTS.source_style),
+    target_style: normalizeStyle(source.target_style, BILINGUAL_SUBTITLE_DEFAULTS.target_style),
+  };
+}
+
+function bilingualSettingsFromForm() {
+  return normalizeBilingualSubtitleSettings({
+    enabled: $("bilingualSubtitlesEnabled")?.checked,
+    source_language: $("bilingualSourceLanguage")?.value,
+    target_language: $("bilingualTargetLanguage")?.value,
+    display_mode: $("bilingualDisplayMode")?.value,
+    source_style: {
+      font_name: $("bilingualSourceFontName")?.value,
+      font_size: $("bilingualSourceFontSize")?.value,
+      color: $("bilingualSourceColor")?.value,
+    },
+    target_style: {
+      font_name: $("bilingualTargetFontName")?.value,
+      font_size: $("bilingualTargetFontSize")?.value,
+      color: $("bilingualTargetColor")?.value,
+    },
+  });
+}
+
+function applyBilingualSettingsToForm(raw) {
+  const settings = normalizeBilingualSubtitleSettings(raw);
+  if ($("bilingualSubtitlesEnabled")) $("bilingualSubtitlesEnabled").checked = settings.enabled;
+  if ($("geminiBilingualDirect")) $("geminiBilingualDirect").checked = settings.enabled;
+  if ($("bilingualSourceLanguage")) $("bilingualSourceLanguage").value = settings.source_language;
+  if ($("bilingualTargetLanguage")) $("bilingualTargetLanguage").value = settings.target_language;
+  if ($("bilingualDisplayMode")) $("bilingualDisplayMode").value = settings.display_mode;
+  populateJapaneseAssFontSelect($("bilingualSourceFontName"), settings.source_style.font_name);
+  populateJapaneseAssFontSelect($("bilingualTargetFontName"), settings.target_style.font_name);
+  if ($("bilingualSourceFontSize")) $("bilingualSourceFontSize").value = String(settings.source_style.font_size);
+  if ($("bilingualTargetFontSize")) $("bilingualTargetFontSize").value = String(settings.target_style.font_size);
+  if ($("bilingualSourceColor")) $("bilingualSourceColor").value = settings.source_style.color.toLowerCase();
+  if ($("bilingualTargetColor")) $("bilingualTargetColor").value = settings.target_style.color.toLowerCase();
+  if ($("bilingualSettingsStatus")) $("bilingualSettingsStatus").textContent = settings.enabled ? "二段表示を使用" : "原文のみ";
+}
+
+function subtitleDisplayParts(sub) {
+  if (!sub) return [];
+  const settings = normalizeBilingualSubtitleSettings(state.projectSettings?.bilingual_subtitle_settings);
+  const sourceText = String(sub.source_text || sub.text || "").trim();
+  const translatedText = String(sub.translated_text || "").trim();
+  const source = sub.speaker_label ? `${sub.speaker_label}: ${sourceText}` : sourceText;
+  if (!settings.enabled || sub.bilingual_enabled === false || !translatedText) return source ? [{ kind: "source", text: source }] : [];
+  const mode = sub.subtitle_display_mode || settings.display_mode;
+  if (mode === "source_only") return source ? [{ kind: "source", text: source }] : [];
+  if (mode === "translation_only") return [{ kind: "translation", text: translatedText }];
+  const parts = [{ kind: "source", text: source }, { kind: "translation", text: translatedText }];
+  return mode === "translation_above" ? parts.reverse() : parts;
+}
+
+function subtitleDisplayText(sub) {
+  return subtitleDisplayParts(sub).map((part) => part.text).filter(Boolean).join("\n");
+}
+
+function renderSubtitleOverlay(overlay, sub) {
+  if (!overlay) return;
+  overlay.textContent = subtitleDisplayText(sub);
+  applyAssSubtitleStyleToOverlay(overlay, sub);
+  const parts = subtitleDisplayParts(sub);
+  if (parts.length < 2) return;
+  const settings = normalizeBilingualSubtitleSettings(state.projectSettings?.bilingual_subtitle_settings);
+  const baseSize = Math.max(8, settings.target_style.font_size);
+  overlay.replaceChildren();
+  for (const part of parts) {
+    const style = part.kind === "translation" ? settings.target_style : settings.source_style;
+    const line = document.createElement("span");
+    line.className = `subtitle-overlay-line subtitle-overlay-${part.kind}`;
+    line.textContent = part.text;
+    line.style.fontFamily = style.font_name;
+    line.style.fontSize = `${style.font_size / baseSize}em`;
+    line.style.color = style.color;
+    overlay.appendChild(line);
+  }
 }
 
 function installedFontName(name) {
@@ -1003,6 +1127,7 @@ function syncProjectSettingsForm() {
   }
   renderAudioTrackOptions();
   applyAssSubtitleStyleToForm(state.projectSettings?.ass_subtitle_defaults || ASS_SUBTITLE_DEFAULTS);
+  applyBilingualSettingsToForm(state.projectSettings?.bilingual_subtitle_settings || BILINGUAL_SUBTITLE_DEFAULTS);
   const audio = state.projectSettings?.audio_timing || {};
   const presetId = normalizeAudioPresetId(audio.local_profile_id || audio.preset_id || "normal");
   if ($("audioTimingPreset")) $("audioTimingPreset").value = presetId;
@@ -1052,6 +1177,7 @@ function updateTranscriptionModeUi() {
     $("localTranscriptionPreset").disabled = mode === "gemini";
     $("localTranscriptionPreset").title = mode === "gemini" ? "Gemini直接文字起こしでは使用しません" : "Whisper・VAD・声抽出・時刻補正をまとめて変更します";
   }
+  if ($("geminiBilingualControl")) $("geminiBilingualControl").classList.toggle("hidden-panel", mode !== "gemini");
   renderWorkflowState();
 }
 
@@ -1720,6 +1846,7 @@ async function saveProjectSettings() {
     transcription_mode: $("transcriptionMode")?.value || "hybrid",
     subtitle_click_playback_mode: $("subtitleClickPlaybackMode")?.value === "loop" ? "loop" : "jump",
     ass_subtitle_defaults: assSubtitleStyleFromForm(),
+    bilingual_subtitle_settings: bilingualSettingsFromForm(),
   };
   const data = await api("/api/projects/settings", {
     method: "POST",
@@ -1731,6 +1858,67 @@ async function saveProjectSettings() {
   syncProjectSettingsForm();
   syncProjectNameInput(state.projectName);
   renderProjectLabel();
+}
+
+async function applyBilingualSubtitleSettings() {
+  if (!state.projectId) throw new Error("先に動画を読み込んでください");
+  const settings = bilingualSettingsFromForm();
+  state.projectSettings = { ...(state.projectSettings || {}), bilingual_subtitle_settings: settings };
+  for (const sub of subtitleItems()) {
+    if (!sub.translated_text) continue;
+    sub.bilingual_enabled = settings.enabled;
+    sub.subtitle_display_mode = settings.display_mode;
+    sub.source_language = sub.source_language || settings.source_language;
+    sub.target_language = sub.target_language || settings.target_language;
+  }
+  await saveProjectSettings();
+  if (subtitleItems().length) await persistCurrentSubtitles();
+  if (state.decorationProject) {
+    syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+  }
+  renderSubtitles();
+  updateOverlay();
+  invalidateWorkflowAfter("STEP_SUBTITLE_EDIT");
+  setStatus(settings.enabled ? "二言語字幕を有効にしました" : "二言語字幕を無効にしました");
+}
+
+async function translateCurrentSubtitles() {
+  if (!state.projectId) throw new Error("先に動画を読み込んでください");
+  if (!subtitleItems().some((sub) => sub.enabled !== false && String(sub.source_text || sub.text || "").trim())) {
+    throw new Error("翻訳する字幕がありません");
+  }
+  if (!state.geminiConfig?.configured) throw new Error("詳細設定でGemini APIキーを保存してください");
+  if ($("bilingualSubtitlesEnabled")) $("bilingualSubtitlesEnabled").checked = true;
+  const settings = bilingualSettingsFromForm();
+  state.projectSettings = { ...(state.projectSettings || {}), bilingual_subtitle_settings: settings };
+  await saveProjectSettings();
+  await persistCurrentSubtitles();
+  const data = await api("/api/ai/gemini/translate-subtitles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: state.projectId,
+      model: state.geminiConfig.model,
+      source_language: settings.source_language,
+      target_language: settings.target_language,
+      display_mode: settings.display_mode,
+    }),
+  });
+  if (data.edit_plan) {
+    state.editPlan = data.edit_plan;
+    state.editPlanPath = state.editPlanPath || "edit_plan.json";
+  }
+  if (data.transcript) state.transcript = data.transcript;
+  else if (!state.editPlan && data.subtitles) state.transcript = { ...(state.transcript || {}), subtitles: data.subtitles };
+  if (state.decorationProject) {
+    syncDecorationEventsFromSubtitles({ path: state.decorationProject.source_srt, subtitles: decorationSourceSubtitles() });
+    await saveDecorationProject();
+  }
+  renderSubtitles();
+  renderCutPage();
+  updateOverlay();
+  invalidateWorkflowAfter("STEP_SUBTITLE_EDIT");
+  setStatus(`Gemini翻訳完了: ${Number(data.translated_count || 0)}件`);
 }
 
 async function saveCurrentProject() {
@@ -2822,21 +3010,18 @@ function updateOverlay() {
   const mainMedia = primaryPlaybackVideo();
   const t = subtitleTimebase(mainMedia);
   const sub = subtitleAtTimelineTime(t, state.mode);
-  $("subtitleOverlay").textContent = sub ? (sub.speaker_label ? `${sub.speaker_label}: ${sub.text}` : sub.text) : "";
-  applyAssSubtitleStyleToOverlay($("subtitleOverlay"), sub);
+  renderSubtitleOverlay($("subtitleOverlay"), sub);
   const subtitlePageT = subtitlePageVideo ? subtitleTimebase(subtitlePageVideo) : t;
   const overlaySub = subtitleAtTimelineTime(subtitlePageT, state.mode);
   const subtitlePageOverlay = $("subtitlePagePreviewOverlay");
   if (subtitlePageOverlay) {
-    subtitlePageOverlay.textContent = overlaySub ? (overlaySub.speaker_label ? `${overlaySub.speaker_label}: ${overlaySub.text}` : overlaySub.text) : "";
-    applyAssSubtitleStyleToOverlay(subtitlePageOverlay, overlaySub);
+    renderSubtitleOverlay(subtitlePageOverlay, overlaySub);
   }
   const cutPageT = cutPageVideo ? subtitleTimebase(cutPageVideo) : t;
   const cutSub = subtitleAtTimelineTime(cutPageT, state.mode);
   const cutPageOverlay = $("cutPagePreviewOverlay");
   if (cutPageOverlay) {
-    cutPageOverlay.textContent = cutSub ? (cutSub.speaker_label ? `${cutSub.speaker_label}: ${cutSub.text}` : cutSub.text) : "";
-    applyAssSubtitleStyleToOverlay(cutPageOverlay, cutSub);
+    renderSubtitleOverlay(cutPageOverlay, cutSub);
   }
   const cutCurrentTime = $("cutCurrentTime");
   if (cutCurrentTime) cutCurrentTime.textContent = fmtTime(cutPageT);
@@ -3250,8 +3435,7 @@ function createSubtitleAssStyleEditor(sub) {
       : "ASS個別設定: プロジェクト既定を使用";
     const subtitlePageOverlay = $("subtitlePagePreviewOverlay");
     if (subtitlePageOverlay) {
-      subtitlePageOverlay.textContent = sub.speaker_label ? `${sub.speaker_label}: ${sub.text || ""}` : (sub.text || "");
-      applyAssSubtitleStyleToOverlay(subtitlePageOverlay, sub);
+      renderSubtitleOverlay(subtitlePageOverlay, sub);
     }
     invalidateWorkflowAfter("STEP_SUBTITLE_EDIT");
     clearTimeout(subtitleAssStyleSaveTimer);
@@ -3303,6 +3487,9 @@ function renderSubtitles() {
   const subtitles = subtitleItems();
   if ($("previewGeneratedSubtitlesBtn")) {
     $("previewGeneratedSubtitlesBtn").disabled = !state.projectId || !subtitles.some((sub) => sub.enabled !== false && String(sub.text || "").trim());
+  }
+  if ($("translateSubtitlesBtn")) {
+    $("translateSubtitlesBtn").disabled = !state.projectId || !subtitles.some((sub) => sub.enabled !== false && String(sub.source_text || sub.text || "").trim());
   }
   const subtitleCount = state.appPage === "subtitles" ? $("subtitleCountPage") : $("subtitleCount");
   if (subtitleCount) subtitleCount.textContent = `${subtitles.length}件`;
@@ -3378,9 +3565,24 @@ function renderSubtitles() {
     candidateInfo.textContent = `Whisper ${whisperStart == null ? "--" : fmtTime(whisperStart)} - ${whisperEnd == null ? "--" : fmtTime(whisperEnd)} / VAD ${vadStart == null ? "--" : fmtTime(vadStart)} - ${vadEnd == null ? "--" : fmtTime(vadEnd)}`;
     timingControls.append(startTimingLabel, endTimingLabel, candidateInfo);
 
+    const textFields = document.createElement("div");
+    textFields.className = "subtitle-text-fields";
+    const sourceLabel = document.createElement("label");
+    sourceLabel.textContent = sub.translated_text ? "原文" : "字幕本文";
     const textarea = document.createElement("textarea");
     textarea.dataset.field = "text";
-    textarea.value = sub.text || "";
+    textarea.value = sub.source_text || sub.text || "";
+    sourceLabel.appendChild(textarea);
+    textFields.appendChild(sourceLabel);
+    if (sub.translated_text !== undefined || normalizeBilingualSubtitleSettings(state.projectSettings?.bilingual_subtitle_settings).enabled) {
+      const translationLabel = document.createElement("label");
+      translationLabel.textContent = "日本語訳";
+      const translationTextarea = document.createElement("textarea");
+      translationTextarea.dataset.field = "translated_text";
+      translationTextarea.value = sub.translated_text || "";
+      translationLabel.appendChild(translationTextarea);
+      textFields.appendChild(translationLabel);
+    }
 
     const actions = document.createElement("div");
     actions.className = "subtitle-actions";
@@ -3406,7 +3608,7 @@ function renderSubtitles() {
     item.appendChild(speakerInfo);
     item.appendChild(timeInfo);
     item.appendChild(timingControls);
-    item.appendChild(textarea);
+    item.appendChild(textFields);
     item.appendChild(createSubtitleAssStyleEditor(sub));
     item.appendChild(actions);
 
@@ -3415,7 +3617,11 @@ function renderSubtitles() {
       const field = target.dataset.field;
       if (!field) return;
       if (field === "enabled") sub.enabled = target.checked;
-      else if (field === "text") sub.text = target.value;
+      else if (field === "text") {
+        sub.text = target.value;
+        if (sub.source_text !== undefined || sub.translated_text !== undefined) sub.source_text = target.value;
+      }
+      else if (field === "translated_text") sub.translated_text = target.value;
       else if (field === "speaker_label") sub.speaker_label = target.value;
       else if (field === "scene_id") sub.scene_id = target.value;
       else if (field === "output_start_sec" || field === "output_end_sec") {
@@ -3468,7 +3674,11 @@ function renderSubtitles() {
       }
       if (action === "merge-prev" && index > 0) {
         const prev = subtitles[index - 1];
+        const prevSource = String(prev.source_text || prev.text || "");
+        const nextSource = String(sub.source_text || sub.text || "");
         prev.text = `${prev.text || ""}${prev.text ? "\n" : ""}${sub.text || ""}`;
+        if (prev.source_text !== undefined || sub.source_text !== undefined) prev.source_text = `${prevSource}${prevSource ? "\n" : ""}${nextSource}`;
+        if (prev.translated_text !== undefined || sub.translated_text !== undefined) prev.translated_text = `${prev.translated_text || ""}${prev.translated_text ? "\n" : ""}${sub.translated_text || ""}`;
         prev.output_end_sec = Math.max(Number(prev.output_end_sec) || 0, Number(sub.output_end_sec) || 0);
         setSubtitleManualOutputTime(prev, "end", prev.output_end_sec);
         prev.enabled = prev.enabled !== false || sub.enabled !== false;
@@ -3485,6 +3695,16 @@ function renderSubtitles() {
         const next = { ...sub, id: `sub_${Date.now()}`, output_start_sec: midpoint, text: (sub.text || "").slice(half).trim() };
         sub.output_end_sec = midpoint;
         sub.text = (sub.text || "").slice(0, half).trim();
+        if (sub.source_text !== undefined) {
+          const sourceHalf = Math.ceil(String(sub.source_text || "").length / 2);
+          next.source_text = String(sub.source_text || "").slice(sourceHalf).trim();
+          sub.source_text = String(sub.source_text || "").slice(0, sourceHalf).trim();
+        }
+        if (sub.translated_text !== undefined) {
+          const translatedHalf = Math.ceil(String(sub.translated_text || "").length / 2);
+          next.translated_text = String(sub.translated_text || "").slice(translatedHalf).trim();
+          sub.translated_text = String(sub.translated_text || "").slice(0, translatedHalf).trim();
+        }
         setSubtitleManualOutputTime(sub, "end", midpoint);
         setSubtitleManualOutputTime(next, "start", midpoint);
         subtitles.splice(index + 1, 0, next);
@@ -3574,6 +3794,12 @@ function decorationSourceSubtitles() {
     start_sec: Number(sub.output_start_sec ?? sub.start_sec ?? 0) || 0,
     end_sec: Number(sub.output_end_sec ?? sub.end_sec ?? 0) || 0,
     text: sub.text || "",
+    source_text: sub.source_text || sub.text || "",
+    translated_text: sub.translated_text || "",
+    source_language: sub.source_language || "",
+    target_language: sub.target_language || "",
+    subtitle_display_mode: sub.subtitle_display_mode || "",
+    bilingual_enabled: sub.bilingual_enabled,
     scene_id: sub.scene_id || "",
     speaker_label: sub.speaker_label || sub.speaker_id || "",
     emotion: sub.emotion || "neutral",
@@ -4087,6 +4313,8 @@ function screenEffectLibrary() {
     { id: "heart_sparkle", name: "ハートきらめき" },
     { id: "heart_tunnel", name: "ハートトンネル" },
     { id: "heart_orbit_burst", name: "回転ハートバースト" },
+    { id: "question_float_up", name: "ハテナ浮上" },
+    { id: "question_tilt", name: "大ハテナ首かしげ" },
     { id: "hearts", name: "ハート" },
     { id: "balloons", name: "風船" },
     { id: "stars", name: "流星" },
@@ -4139,6 +4367,8 @@ function screenEffectCategory(effectId) {
     "heart_sparkle",
     "heart_tunnel",
     "heart_orbit_burst",
+    "question_float_up",
+    "question_tilt",
   ]);
   return overlayIds.has(String(effectId || "").trim()) ? "overlay" : "video_shader";
 }
@@ -4392,6 +4622,10 @@ function normalizeScreenEffectItem(effect) {
     direction_angle: numberOrDefault(effect?.direction_angle, defaults.direction_angle),
     symbol_count: numberOrDefault(effect?.symbol_count, defaults.symbol_count),
     expansion_speed: numberOrDefault(effect?.expansion_speed, defaults.expansion_speed),
+    position_preset: String(effect?.position_preset || defaults.position_preset || "custom"),
+    spread: numberOrDefault(effect?.spread, defaults.spread),
+    sway_strength: numberOrDefault(effect?.sway_strength, defaults.sway_strength),
+    tilt_angle: numberOrDefault(effect?.tilt_angle, defaults.tilt_angle),
     background_color: String(effect?.background_color || defaults.background_color || effect?.bg_color || "#ffffff"),
   };
 }
@@ -4444,6 +4678,10 @@ function screenEffectItemDefaults(effectId) {
     direction_angle: -35,
     symbol_count: 8,
     expansion_speed: 1,
+    position_preset: "custom",
+    spread: 0.35,
+    sway_strength: 0.08,
+    tilt_angle: 18,
     contrast: 1,
     background_color: "#ffffff",
   };
@@ -4645,9 +4883,32 @@ function screenEffectItemDefaults(effectId) {
       return { ...base, intensity: 0.8, speed: 1.0, color: "#ff5ca8", position_x: 0.5, position_y: 0.5, radius: 0.12, symbol_count: 7 };
     case "heart_orbit_burst":
       return { ...base, intensity: 0.88, speed: 1.0, color: "#ff5ca8", position_x: 0.5, position_y: 0.5, radius: 0.055, symbol_count: 14 };
+    case "question_float_up":
+      return { ...base, intensity: 0.9, speed: 0.72, color: "#ffe45c", position_x: 0.5, position_y: 0.82, radius: 0.075, symbol_count: 12, spread: 0.42, sway_strength: 0.07 };
+    case "question_tilt":
+      return { ...base, intensity: 0.95, speed: 0.9, color: "#ffe45c", position_preset: "center", position_x: 0.5, position_y: 0.45, radius: 0.22, symbol_count: 1, sway_strength: 0.025, tilt_angle: 18 };
     default:
       return base;
   }
+}
+
+function screenEffectPositionPresets() {
+  return [
+    { id: "custom", label: "現在値（微調整）", x: null, y: null },
+    { id: "top_left", label: "左上", x: 0.18, y: 0.2 },
+    { id: "top_center", label: "上中央", x: 0.5, y: 0.2 },
+    { id: "top_right", label: "右上", x: 0.82, y: 0.2 },
+    { id: "middle_left", label: "中央左", x: 0.18, y: 0.45 },
+    { id: "center", label: "中央", x: 0.5, y: 0.45 },
+    { id: "middle_right", label: "中央右", x: 0.82, y: 0.45 },
+    { id: "bottom_left", label: "左下", x: 0.18, y: 0.75 },
+    { id: "bottom_center", label: "下中央", x: 0.5, y: 0.75 },
+    { id: "bottom_right", label: "右下", x: 0.82, y: 0.75 },
+  ];
+}
+
+function screenEffectPositionPreset(presetId) {
+  return screenEffectPositionPresets().find((item) => item.id === presetId) || null;
 }
 
 function screenEffectParameterSpecs(effectId) {
@@ -4774,6 +5035,28 @@ function screenEffectParameterSpecs(effectId) {
         { key: "position_x", label: "X位置", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
         { key: "position_y", label: "Y位置", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
         { key: "speed", label: "速度", min: 0.1, max: 3, step: 0.01, format: (v) => Number(v).toFixed(2) },
+      ];
+    case "question_float_up":
+      return [
+        { key: "intensity", label: "濃さ", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "position_x", label: "発生位置X", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "position_y", label: "発生位置Y", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "speed", label: "浮上速度", min: 0.1, max: 3, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "symbol_count", label: "個数", min: 2, max: 48, step: 1, format: (v) => `${Math.round(Number(v))} 個`, integer: true },
+        { key: "radius", label: "大きさ", min: 0.025, max: 0.2, step: 0.005, format: (v) => Number(v).toFixed(3) },
+        { key: "spread", label: "横の広がり", min: 0.05, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "sway_strength", label: "横揺れ", min: 0, max: 0.25, step: 0.005, format: (v) => Number(v).toFixed(3) },
+      ];
+    case "question_tilt":
+      return [
+        { key: "intensity", label: "濃さ", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "position_preset", label: "画面配置", kind: "select", options: screenEffectPositionPresets() },
+        { key: "position_x", label: "配置位置X", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "position_y", label: "配置位置Y", min: 0, max: 1, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "radius", label: "大きさ", min: 0.06, max: 0.5, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "speed", label: "かしげる速度", min: 0.1, max: 3, step: 0.01, format: (v) => Number(v).toFixed(2) },
+        { key: "tilt_angle", label: "傾き角度", min: 2, max: 45, step: 1, format: (v) => `${Math.round(Number(v))}°`, integer: true },
+        { key: "sway_strength", label: "上下の揺れ", min: 0, max: 0.12, step: 0.005, format: (v) => Number(v).toFixed(3) },
       ];
     case "noise":
     case "film_grain":
@@ -6060,6 +6343,12 @@ function buildDecorationProjectFromSubtitles(source = null) {
       id: sub.id,
       subtitle_id: sub.subtitle_id,
       text: sub.text,
+      source_text: sub.source_text || sub.text,
+      translated_text: sub.translated_text || "",
+      source_language: sub.source_language || "",
+      target_language: sub.target_language || "",
+      subtitle_display_mode: sub.subtitle_display_mode || "",
+      bilingual_enabled: sub.bilingual_enabled,
       start_sec: sub.start_sec,
       end_sec: sub.end_sec,
       scene_id: subtitleSceneId(index),
@@ -6146,6 +6435,12 @@ function syncDecorationEventsFromSubtitles(source = null) {
       id: eventItem.id,
       subtitle_id: eventItem.subtitle_id,
       text: eventItem.text,
+      source_text: eventItem.source_text,
+      translated_text: eventItem.translated_text,
+      source_language: eventItem.source_language,
+      target_language: eventItem.target_language,
+      subtitle_display_mode: eventItem.subtitle_display_mode,
+      bilingual_enabled: eventItem.bilingual_enabled,
       start_sec: eventItem.start_sec,
       end_sec: eventItem.end_sec,
       scene_id: eventItem.scene_id,
@@ -6182,6 +6477,12 @@ function decorationEventForSubtitle(sub) {
   return {
     ...eventItem,
     text: sub.text ?? eventItem.text,
+    source_text: sub.source_text ?? eventItem.source_text ?? sub.text ?? eventItem.text,
+    translated_text: sub.translated_text ?? eventItem.translated_text,
+    source_language: sub.source_language ?? eventItem.source_language,
+    target_language: sub.target_language ?? eventItem.target_language,
+    subtitle_display_mode: sub.subtitle_display_mode ?? eventItem.subtitle_display_mode,
+    bilingual_enabled: sub.bilingual_enabled ?? eventItem.bilingual_enabled,
     start_sec: sub.output_start_sec ?? eventItem.start_sec,
     end_sec: sub.output_end_sec ?? eventItem.end_sec,
     speaker_label: sub.speaker_label ?? eventItem.speaker_label,
@@ -6276,7 +6577,7 @@ function buildDecorationPreviewNode(eventItem, options = {}) {
       `0 -${outline}px ${outlineColor}`,
     ].join(",");
   }
-  previewLine.textContent = selected.text || "";
+  previewLine.textContent = subtitleDisplayText(selected);
   subtitleFrame.appendChild(previewLine);
   preview.appendChild(subtitleFrame);
   if (includeChips) {
@@ -6571,6 +6872,7 @@ function renderDecorationPage() {
       text.disabled = isGlobalDecorationEvent(selected);
       text.addEventListener("input", () => {
         selected.text = text.value;
+        if (selected.source_text !== undefined) selected.source_text = text.value;
       });
       const speaker = document.createElement("input");
       speaker.value = selected.speaker_label || "";
@@ -7391,7 +7693,7 @@ function renderDecorationPage() {
     const subline = document.createElement("small");
     subline.textContent = `${eventItem.scene_id || "sceneなし"} / ${eventItem.style_override_enabled === true ? "個別" : "全体設定"} / ${effectiveFrameForEvent(eventItem).name || eventItem.frame_preset_id || "frameなし"} / ${effectiveDecorationForEvent(eventItem).text_effect_group_id || "effectなし"}`;
     const text = document.createElement("div");
-    text.textContent = eventItem.text || "";
+    text.textContent = subtitleDisplayText(eventItem);
     meta.appendChild(title);
     meta.appendChild(subline);
     meta.appendChild(text);
@@ -7661,13 +7963,30 @@ function renderScreenEffectStackSection() {
       const stack = screenEffectStackById(stackId);
       const effect = stackPrimaryEffect(stack);
       const chip = document.createElement("span");
-      chip.className = "decoration-chip";
+      chip.className = `decoration-chip screen-effect-select-chip${state.screenEffectSelectedStackId === stackId ? " selected" : ""}`;
+      chip.tabIndex = 0;
+      chip.setAttribute("role", "button");
+      chip.setAttribute("aria-pressed", state.screenEffectSelectedStackId === stackId ? "true" : "false");
+      chip.title = "選択して設定を編集";
       chip.textContent = `${screenEffectName(effect.id)} / ${stackTimingLabel(stack || {}, scope === "global" ? "全体" : "シーン")}`;
+      const selectStack = () => {
+        state.screenEffectSelectedStackId = stackId;
+        state.screenEffectPanelMode = "edit";
+        renderDecorationPage();
+      };
+      chip.addEventListener("click", selectStack);
+      chip.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        selectStack();
+      });
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "×";
+      remove.title = "この対象から外す";
       remove.style.marginLeft = "6px";
-      remove.addEventListener("click", () => {
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
         if (!state.decorationProject) return;
         removeScreenEffectStackFromTarget(stackId, scope, currentSceneId);
         renderDecorationPage();
@@ -7681,6 +8000,27 @@ function renderScreenEffectStackSection() {
   renderTargetChips(sceneList, currentSceneId ? (targets.scene_stack_ids?.[currentSceneId] || []) : [], "scene");
 
   stackList.textContent = "";
+  if (!stacks.length) state.screenEffectPanelMode = "add";
+  const panelMode = state.screenEffectPanelMode === "edit" && stacks.length ? "edit" : "add";
+  const modeToolbar = document.createElement("div");
+  modeToolbar.className = "screen-effect-mode-toolbar";
+  [
+    { id: "add", label: "新しく追加" },
+    { id: "edit", label: `追加済みを編集（${stacks.length}）`, disabled: !stacks.length },
+  ].forEach((modeItem) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = modeItem.label;
+    button.disabled = Boolean(modeItem.disabled);
+    button.className = panelMode === modeItem.id ? "active" : "";
+    button.setAttribute("aria-pressed", panelMode === modeItem.id ? "true" : "false");
+    button.addEventListener("click", () => {
+      state.screenEffectPanelMode = modeItem.id;
+      renderDecorationPage();
+    });
+    modeToolbar.appendChild(button);
+  });
+  stackList.appendChild(modeToolbar);
 
   const addPanel = document.createElement("div");
   addPanel.className = "effect-group-item";
@@ -7767,9 +8107,22 @@ function renderScreenEffectStackSection() {
     const title = document.createElement("span");
     title.textContent = spec.label;
     const current = document.createElement("output");
-    const input = document.createElement("input");
+    const input = document.createElement(spec.kind === "select" ? "select" : "input");
     const rawValue = effect?.[spec.key] ?? spec.default ?? screenEffectItemDefaults(effect.id)?.[spec.key] ?? 0;
-    if (spec.kind === "color") {
+    if (spec.kind === "select") {
+      (spec.options || []).forEach((optionItem) => {
+        const option = document.createElement("option");
+        option.value = optionItem.id;
+        option.textContent = optionItem.label || optionItem.name || optionItem.id;
+        input.appendChild(option);
+      });
+      input.value = String(rawValue || "custom");
+      current.textContent = input.selectedOptions[0]?.textContent || input.value;
+      input.addEventListener("change", () => {
+        current.textContent = input.selectedOptions[0]?.textContent || input.value;
+        if (onChange) onChange(input.value);
+      });
+    } else if (spec.kind === "color") {
       input.type = "color";
       input.value = String(rawValue || "#ffffff");
       current.textContent = input.value.toUpperCase();
@@ -7798,22 +8151,53 @@ function renderScreenEffectStackSection() {
   };
 
   const paramSpecsForEffect = (effectId) => {
-    const commonSpecs = [
-      { key: "intensity", label: "強さ", min: 0, max: 1, step: 0.01, default: 1, format: (v) => Number(v).toFixed(2) },
-      { key: "speed", label: "速度", min: 0.1, max: 3, step: 0.01, default: 1, format: (v) => Number(v).toFixed(2) },
-      { key: "color", label: "色", kind: "color", default: "#ffffff" },
-    ];
+    const id = String(effectId || "").trim();
     const specs = screenEffectParameterSpecs(effectId);
-    return [
-      ...commonSpecs,
-      ...specs.filter((spec) => !commonSpecs.some((common) => common.key === spec.key)),
-    ];
+    const result = [...specs];
+    const addIfMissing = (spec) => {
+      if (!result.some((item) => item.key === spec.key)) result.unshift(spec);
+    };
+    if (id !== "video_zoom") {
+      addIfMissing({ key: "intensity", label: "強さ", min: 0, max: 1, step: 0.01, default: 1, format: (v) => Number(v).toFixed(2) });
+    }
+    const speedIds = new Set([
+      ...speedLineEffectIds(),
+      "shake", "hand_tremor", "action_shake", "iris_out", "drifting_stars", "drifting_hearts",
+      "heart_rain", "heart_float_up", "heart_confetti", "heart_sparkle", "heart_tunnel", "heart_orbit_burst",
+      "question_float_up", "question_tilt",
+    ]);
+    if (speedIds.has(id)) {
+      addIfMissing({ key: "speed", label: "速度", min: 0.1, max: 3, step: 0.01, default: 1, format: (v) => Number(v).toFixed(2) });
+    }
+    const colorIds = new Set([
+      ...speedLineEffectIds(),
+      "drifting_stars", "drifting_hearts", "heart_wipe", "heart_expand", "heart_burst",
+      "heart_rain", "heart_float_up", "heart_confetti", "heart_sparkle", "heart_tunnel", "heart_orbit_burst",
+      "question_float_up", "question_tilt", "halftone",
+    ]);
+    if (colorIds.has(id)) {
+      result.push({ key: "color", label: "色", kind: "color", default: "#ffffff" });
+    }
+    return result;
   };
 
   const renderAddSettings = () => {
     addSettings.textContent = "";
     const effect = normalizeScreenEffectItem({ id: effectSelect.value, ...screenEffectItemDefaults(effectSelect.value) });
-    paramSpecsForEffect(effect.id).forEach((spec) => addSettings.appendChild(makeParamControl(effect, spec)));
+    const applyPositionPreset = (presetId) => {
+      const preset = screenEffectPositionPreset(presetId);
+      if (!preset || preset.x == null || preset.y == null) return;
+      [["position_x", preset.x], ["position_y", preset.y]].forEach(([key, value]) => {
+        const target = addSettings.querySelector(`[data-effect-param="${key}"]`);
+        if (!target) return;
+        target.value = String(value);
+        const output = target.closest("label")?.querySelector("output");
+        if (output) output.textContent = Number(value).toFixed(2);
+      });
+    };
+    paramSpecsForEffect(effect.id).forEach((spec) => {
+      addSettings.appendChild(makeParamControl(effect, spec, spec.key === "position_preset" ? applyPositionPreset : null));
+    });
   };
   renderAddSettings();
 
@@ -7821,7 +8205,7 @@ function renderScreenEffectStackSection() {
     const effect = normalizeScreenEffectItem({ id: effectId, ...screenEffectItemDefaults(effectId) });
     panel.querySelectorAll("[data-effect-param]").forEach((input) => {
       const key = input.dataset.effectParam;
-      effect[key] = input.type === "color" ? input.value : Number(input.value);
+      effect[key] = input.type === "color" || input.tagName === "SELECT" ? input.value : Number(input.value);
     });
     return normalizeScreenEffectItem(effect);
   };
@@ -7871,6 +8255,7 @@ function renderScreenEffectStackSection() {
     if (targetSelect.value === "scene") addScreenEffectStackToTarget(nextId, "scene", targetSceneId);
     else addScreenEffectStackToTarget(nextId, "global");
     state.screenEffectSelectedStackId = nextId;
+    state.screenEffectPanelMode = "edit";
     renderDecorationPage();
     setStatus(`${name || screenEffectName(effect.id)}を${targetSelect.value === "scene" ? "現在シーン" : "全体"}へ追加しました`);
   };
@@ -7926,6 +8311,16 @@ function renderScreenEffectStackSection() {
         { name: "ハートきらめき", effect: { id: "heart_sparkle", intensity: 0.72, speed: 1.0, symbol_count: 26, radius: 0.04, color: "#ff7ec8" } },
         { name: "回転ハート", effect: { id: "heart_orbit_burst", intensity: 0.88, speed: 1.0, symbol_count: 14, radius: 0.055, position_x: 0.5, position_y: 0.5, color: "#ff5ca8" } },
         { name: "流れ星", effect: { id: "drifting_stars", intensity: 0.85, speed: 1.0, direction_angle: -25, symbol_count: 10, color: "#fff176" } },
+      ],
+    },
+    {
+      id: "question",
+      name: "ハテナ",
+      presets: [
+        { name: "ハテナ浮上", effect: { id: "question_float_up", intensity: 0.9, speed: 0.72, symbol_count: 12, radius: 0.075, position_x: 0.5, position_y: 0.82, spread: 0.42, sway_strength: 0.07, color: "#ffe45c" } },
+        { name: "ハテナ浮上 少なめ", effect: { id: "question_float_up", intensity: 0.88, speed: 0.58, symbol_count: 6, radius: 0.09, position_x: 0.5, position_y: 0.78, spread: 0.28, sway_strength: 0.05, color: "#ffffff" } },
+        { name: "大ハテナ首かしげ", effect: { id: "question_tilt", intensity: 0.95, speed: 0.9, radius: 0.22, position_x: 0.5, position_y: 0.38, tilt_angle: 18, sway_strength: 0.025, color: "#ffe45c" } },
+        { name: "大ハテナ強調", effect: { id: "question_tilt", intensity: 1.0, speed: 1.25, radius: 0.3, position_x: 0.5, position_y: 0.4, tilt_angle: 28, sway_strength: 0.04, color: "#ffffff" } },
       ],
     },
     {
@@ -8005,7 +8400,7 @@ function renderScreenEffectStackSection() {
   presetBar.appendChild(presetButtons);
   renderPresetButtons();
   addPanel.appendChild(presetBar);
-  stackList.appendChild(addPanel);
+  if (panelMode === "add") stackList.appendChild(addPanel);
 
   const listPanel = document.createElement("div");
   listPanel.className = "effect-group-item";
@@ -8028,6 +8423,24 @@ function renderScreenEffectStackSection() {
     if (!stacks.some((stack) => stack.id === state.screenEffectSelectedStackId)) {
       state.screenEffectSelectedStackId = stacks[0]?.id || "";
     }
+    const selectionList = document.createElement("div");
+    selectionList.className = "screen-effect-selection-list";
+    stacks.forEach((stackItem) => {
+      const stackEffect = stackPrimaryEffect(stackItem);
+      const selectButton = document.createElement("button");
+      selectButton.type = "button";
+      selectButton.className = `screen-effect-selection-button${state.screenEffectSelectedStackId === stackItem.id ? " selected" : ""}`;
+      selectButton.textContent = `${screenEffectName(stackEffect.id)} / ${stackScopeLabel(stackItem.id)}`;
+      selectButton.title = stackTimingLabel(stackItem, stackScopeLabel(stackItem.id));
+      selectButton.addEventListener("click", () => {
+        state.screenEffectSelectedStackId = stackItem.id;
+        state.screenEffectPanelMode = "edit";
+        renderDecorationPage();
+      });
+      selectionList.appendChild(selectButton);
+    });
+    listPanel.appendChild(selectionList);
+
     const editToolbar = document.createElement("div");
     editToolbar.className = "decoration-toolbar";
     const editLabel = document.createElement("span");
@@ -8108,14 +8521,56 @@ function renderScreenEffectStackSection() {
 
     paramSpecsForEffect(effect.id).forEach((spec) => {
       item.appendChild(makeParamControl(effect, spec, (nextValue) => {
+        if (spec.key === "position_preset") {
+          const preset = screenEffectPositionPreset(nextValue);
+          updateScreenEffectStackEffectAt(stack.id, 0, (currentEffect) => ({
+            ...currentEffect,
+            position_preset: nextValue,
+            ...(preset && preset.x != null && preset.y != null ? { position_x: preset.x, position_y: preset.y } : {}),
+          }));
+          state.screenEffectSelectedStackId = stack.id;
+          renderDecorationPage();
+          return;
+        }
         updateScreenEffectStackEffectAt(stack.id, 0, (currentEffect) => ({ ...currentEffect, [spec.key]: nextValue }));
         updateDecorationPreviewFilters();
       }));
     });
+    const editActions = document.createElement("div");
+    editActions.className = "decoration-toolbar screen-effect-edit-actions";
+    const saveChangesBtn = document.createElement("button");
+    saveChangesBtn.type = "button";
+    saveChangesBtn.className = "primary";
+    saveChangesBtn.textContent = "設定変更を保存";
+    saveChangesBtn.addEventListener("click", async () => {
+      if (!state.projectId || !state.decorationProject) return;
+      saveChangesBtn.disabled = true;
+      try {
+        await saveDecorationProject();
+        state.screenEffectSelectedStackId = stack.id;
+        setStatus(`${screenEffectName(effect.id)}の設定変更を保存しました`);
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      } finally {
+        saveChangesBtn.disabled = false;
+      }
+    });
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.textContent = "この効果を初期値へ戻す";
+    resetBtn.addEventListener("click", () => {
+      resetScreenEffectStackEffectToDefaults(stack.id, 0);
+      state.screenEffectSelectedStackId = stack.id;
+      renderDecorationPage();
+      setStatus(`${screenEffectName(effect.id)}を初期値へ戻しました`);
+    });
+    editActions.appendChild(saveChangesBtn);
+    editActions.appendChild(resetBtn);
+    item.appendChild(editActions);
     listPanel.appendChild(item);
   }
 
-  stackList.appendChild(listPanel);
+  if (panelMode === "edit") stackList.appendChild(listPanel);
   updateDecorationPreviewFilters();
 }
 function playDecorationPreviewVideo() {
@@ -8500,6 +8955,8 @@ async function mergeSelectedCutSubtitles() {
     const text = String(subtitle.text || "").trim();
     return multipleSpeakers && speakerLabels[index] ? `${speakerLabels[index]}: ${text}` : text;
   }).filter(Boolean).join("\n");
+  primary.source_text = primary.text;
+  primary.translated_text = selected.map((subtitle) => String(subtitle.translated_text || "").trim()).filter(Boolean).join("\n");
   if (multipleSpeakers) {
     primary.speaker_label = "";
     primary.speaker_id = "";
@@ -8752,7 +9209,7 @@ function renderCutPage() {
       const text = document.createElement("td");
       text.className = "cut-subtitle-text";
       text.title = "ダブルクリックで字幕本文を編集";
-      text.textContent = subtitle.speaker_label ? `${subtitle.speaker_label}: ${subtitle.text || ""}` : (subtitle.text || "");
+      text.textContent = subtitleDisplayText(subtitle);
       row.append(selection, number, sourceTime, outputTime, text);
       const seek = () => {
         state.selectedSubtitleId = subtitle.id;
@@ -9389,6 +9846,7 @@ function resetProjectRuntimeState() {
     transcription_mode: "hybrid",
     subtitle_click_playback_mode: "jump",
     ass_subtitle_defaults: { ...ASS_SUBTITLE_DEFAULTS },
+    bilingual_subtitle_settings: normalizeBilingualSubtitleSettings(BILINGUAL_SUBTITLE_DEFAULTS),
   };
   state.projectScenes = [];
   state.decorationProject = null;
@@ -9813,13 +10271,21 @@ async function transcribeAndDetectSilence() {
 
 async function geminiTranscribeAndDetectSilence() {
   await ensureAudioExtracted();
+  const bilingualSettings = normalizeBilingualSubtitleSettings({
+    ...bilingualSettingsFromForm(),
+    enabled: Boolean($("geminiBilingualDirect")?.checked),
+  });
+  state.projectSettings = { ...(state.projectSettings || {}), bilingual_subtitle_settings: bilingualSettings };
+  applyBilingualSettingsToForm(bilingualSettings);
+  await saveProjectSettings();
   const data = await api("/api/ai/gemini/transcribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       project_id: state.projectId,
       model: state.geminiConfig?.model || $("geminiPageModel")?.value || "gemini-3.5-flash",
-      language: $("language").value || "ja",
+      language: bilingualSettings.enabled ? bilingualSettings.source_language : ($("language").value || "ja"),
+      bilingual_subtitle_settings: bilingualSettings,
     }),
   });
   state.transcript = {
@@ -9975,6 +10441,10 @@ $("saveSubtitlesBtn").addEventListener("click", () =>
     markWorkflowCompleted("STEP_SUBTITLE_EDIT", { invalidateFrom: "STEP_DECORATION" });
     setAppPage("decoration");
   })
+);
+
+$("translateSubtitlesBtn")?.addEventListener("click", () =>
+  runStep("Gemini字幕翻訳", translateCurrentSubtitles)
 );
 
 $("setRangeTranscribeStartBtn")?.addEventListener("click", () => {
@@ -10226,8 +10696,27 @@ for (const id of transcriptionSettingIds) {
 }
 $("transcriptionMode")?.addEventListener("change", () => {
   state.projectSettings = { ...(state.projectSettings || {}), transcription_mode: $("transcriptionMode").value };
+  if ($("transcriptionMode").value === "gemini" && String($("language")?.value || "").toLowerCase().startsWith("en")) {
+    if ($("geminiBilingualDirect")) $("geminiBilingualDirect").checked = true;
+    if ($("bilingualSubtitlesEnabled")) $("bilingualSubtitlesEnabled").checked = true;
+  }
   updateTranscriptionModeUi();
   if (state.projectId) saveProjectSettings().catch(() => {});
+});
+$("geminiBilingualDirect")?.addEventListener("change", () => {
+  if ($("bilingualSubtitlesEnabled")) $("bilingualSubtitlesEnabled").checked = $("geminiBilingualDirect").checked;
+  state.projectSettings = {
+    ...(state.projectSettings || {}),
+    bilingual_subtitle_settings: bilingualSettingsFromForm(),
+  };
+  if (state.projectId) saveProjectSettings().catch(() => {});
+});
+$("language")?.addEventListener("change", () => {
+  if ($("transcriptionMode")?.value !== "gemini") return;
+  if (String($("language").value || "").toLowerCase().startsWith("en")) {
+    if ($("geminiBilingualDirect")) $("geminiBilingualDirect").checked = true;
+    if ($("bilingualSubtitlesEnabled")) $("bilingualSubtitlesEnabled").checked = true;
+  }
 });
 $("subtitleClickPlaybackMode")?.addEventListener("change", () => {
   const mode = $("subtitleClickPlaybackMode").value === "loop" ? "loop" : "jump";
@@ -10264,6 +10753,10 @@ for (const id of assSubtitleSettingIds) {
     updateProjectAssSubtitleDefaultsFromForm();
   });
 }
+
+$("applyBilingualSettingsBtn")?.addEventListener("click", () =>
+  runStep("二言語字幕設定", applyBilingualSubtitleSettings)
+);
 $("sourceModeBtn").addEventListener("click", () => setMode("source"));
 $("plannedModeBtn").addEventListener("click", () => setMode("planned"));
 $("renderedModeBtn").addEventListener("click", () => setMode("rendered"));
@@ -10422,7 +10915,13 @@ for (const id of ["geminiSpeakerLabelsEnabled", "geminiSrtTimingPriority"]) {
 }
 $("decorationBackBtn").addEventListener("click", () => setAppPage("subtitles"));
 $("previewCheckBackBtn").addEventListener("click", () => setAppPage("decoration"));
-$("previewToExportBtn").addEventListener("click", () => setAppPage("export"));
+$("previewToExportBtn").addEventListener("click", () =>
+  runStep("動画出力の準備", async () => {
+    requireProject();
+    await prepareFinalExport(true);
+    if (!setAppPage("export")) throw new Error("動画出力画面へ移動できませんでした");
+  })
+);
 $("cutSourceModeBtn").addEventListener("click", () => {
   setMode("source");
   renderCutPage();

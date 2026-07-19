@@ -24,6 +24,7 @@ from .services import (
     transcribe_audio,
 )
 from .srt import write_srt
+from .gemini_service import translate_project_subtitles
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,6 +75,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("save-subtitles")
     p.add_argument("--project-id", required=True)
     p.add_argument("--subtitles-json", required=True)
+
+    p = sub.add_parser("translate-subtitles")
+    p.add_argument("--project-id", required=True)
+    p.add_argument("--model")
+    p.add_argument("--source-language", default="en")
+    p.add_argument("--target-language", default="ja")
+    p.add_argument(
+        "--display-mode",
+        choices=["source_above", "translation_above", "source_only", "translation_only"],
+        default="source_above",
+    )
 
     p = sub.add_parser("preview")
     p.add_argument("--project-id", required=True)
@@ -206,6 +218,28 @@ def cmd_save_subtitles(args: argparse.Namespace) -> None:
     write_srt(subtitles, resolve_project_path(args.project_id, "subtitles", "edited.srt"))
     audit_project_event(args.project_id, "cli.save_subtitles")
     print(json.dumps({"edit_plan": plan}, ensure_ascii=False, indent=2))
+
+
+def cmd_translate_subtitles(args: argparse.Namespace) -> None:
+    result = translate_project_subtitles(
+        args.project_id,
+        args.model,
+        args.source_language,
+        args.target_language,
+        args.display_mode,
+    )
+    audit_project_event(
+        args.project_id,
+        "cli.translate_subtitles",
+        context={
+            "model": result.get("model"),
+            "source_language": args.source_language,
+            "target_language": args.target_language,
+            "display_mode": args.display_mode,
+            "translated_count": result.get("translated_count", 0),
+        },
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_preview(args: argparse.Namespace) -> None:
@@ -416,6 +450,8 @@ def main() -> None:
         cmd_create_edit_plan(args)
     elif args.command == "save-subtitles":
         cmd_save_subtitles(args)
+    elif args.command == "translate-subtitles":
+        cmd_translate_subtitles(args)
     elif args.command == "preview":
         cmd_preview(args)
     elif args.command == "export":

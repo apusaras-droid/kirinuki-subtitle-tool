@@ -13,6 +13,7 @@
 | 無音区間を検出 | `detect-silence` | `transcript/transcript.json` |
 | カット案を作成 | `create-edit-plan` | `edit_plan.json` |
 | 字幕を保存 | `save-subtitles` | `edit_plan.json` / `subtitles/edited.srt` |
+| 英語字幕を日本語へ翻訳 | `translate-subtitles` / `POST /api/ai/gemini/translate-subtitles` | `transcript/transcript.json` / `edit_plan.json` / `subtitles/edited.srt` |
 | 仮出力を作成 | `preview` | `preview/preview_low.mp4` |
 | 手動カットを仮出力 | `preview` の前に `edit_plan.json` 更新 | `edit_plan.json` |
 | 最終出力 | `export` | `output/final.*` |

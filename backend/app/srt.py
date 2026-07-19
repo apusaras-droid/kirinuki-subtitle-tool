@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 
 from .timecode import format_srt_time
+from .subtitle_text import subtitle_display_text
 
 
 SENTENCE_BREAK_TOKENS = {"。", "！", "？", "!", "?", "…", "\n"}
@@ -82,7 +83,7 @@ def write_srt(subtitles: list[dict], path: Path, *, strict_burn: bool = False) -
     for item in subtitles:
         if item.get("enabled", True) is False:
             continue
-        text = sanitize_srt_text(item.get("text", ""), strict_burn=strict_burn)
+        text = sanitize_srt_text(subtitle_display_text(item), strict_burn=strict_burn)
         speaker_label = sanitize_srt_text(item.get("speaker_label", ""), strict_burn=strict_burn).replace("\n", " ").strip()
         if speaker_label and item.get("speaker_label_prefix", True):
             if not re.match(rf"^{re.escape(speaker_label)}(?:[:：\s]|$)", text):

@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import wave
 import uuid
 import time
@@ -25,6 +26,7 @@ from .audit import audit_event, audit_project_detail_event, audit_project_event
 from .edit_plan import build_edit_plan, map_subtitles_to_output
 from .srt import apply_vad_subtitle_corrections, filter_repetitive_hallucinations, normalize_subtitle_durations, parse_srt, subtitles_from_whisper, write_srt
 from .timecode import format_srt_time
+from .subtitle_text import normalize_bilingual_settings, subtitle_display_text, subtitle_source_text
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECTS_DIR = ROOT / "projects"
@@ -1293,6 +1295,138 @@ def render_heart_particle_overlay_video(
     return output_path
 
 
+@lru_cache(maxsize=64)
+def _question_mark_font(size: int):
+    try:
+        from PIL import ImageFont
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Pillowを読み込めません: {exc}") from exc
+
+    fonts_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    for name in ("arialbd.ttf", "meiryob.ttc", "YuGothB.ttc", "msgothic.ttc"):
+        candidate = fonts_dir / name
+        if candidate.exists():
+            try:
+                return ImageFont.truetype(str(candidate), max(12, int(size)))
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
+def _question_mark_sprite(size: float, color: tuple[int, int, int], alpha: int):
+    from PIL import Image, ImageDraw
+
+    font_size = max(14, int(round(size * 1.85)))
+    font = _question_mark_font(font_size)
+    stroke = max(1, int(round(font_size * 0.055)))
+    probe = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    probe_draw = ImageDraw.Draw(probe)
+    bbox = probe_draw.textbbox((0, 0), "?", font=font, stroke_width=stroke)
+    width = max(1, bbox[2] - bbox[0])
+    height = max(1, bbox[3] - bbox[1])
+    pad = max(4, int(round(font_size * 0.16)))
+    sprite = Image.new("RGBA", (width + pad * 2, height + pad * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(sprite)
+    draw.text(
+        (pad - bbox[0], pad - bbox[1]),
+        "?",
+        font=font,
+        fill=(*color, max(0, min(255, alpha))),
+        stroke_width=stroke,
+        stroke_fill=(0, 0, 0, max(0, min(180, int(alpha * 0.62)))),
+    )
+    return sprite
+
+
+def render_question_overlay_video(
+    project_id: str,
+    effect: dict,
+    output_path: Path,
+    duration_sec: float,
+    canvas_size: tuple[int, int] = (1280, 720),
+    fps: int = 18,
+) -> Path:
+    """Render question-mark overlays without modifying the source-video layer."""
+    try:
+        from PIL import Image
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Pillowを読み込めません: {exc}") from exc
+
+    import random
+
+    mode = str(effect.get("id") or "question_float_up").strip()
+    width, height = canvas_size
+    duration = max(0.2, min(30.0, float(duration_sec or 1.0)))
+    frame_count = max(2, int(math.ceil(duration * fps)))
+    intensity = max(0.0, min(1.0, float(effect.get("intensity", 0.9) or 0.9)))
+    speed = max(0.1, min(3.0, float(effect.get("speed", 0.8) or 0.8)))
+    cx = max(0.0, min(1.0, float(effect.get("position_x", 0.5) or 0.5))) * width
+    cy = max(0.0, min(1.0, float(effect.get("position_y", 0.75) or 0.75))) * height
+    base_size = max(0.025, min(0.5, float(effect.get("radius", 0.08) or 0.08))) * min(width, height)
+    color = rgb_from_hex(effect.get("color"), (255, 228, 92))
+    spread = max(0.02, min(1.0, float(effect.get("spread", 0.42) or 0.42))) * width
+    sway = max(0.0, min(0.3, float(effect.get("sway_strength", 0.07) or 0.07)))
+    count = max(2, min(48, int(round(float(effect.get("symbol_count", 12) or 12)))))
+    tilt_angle = max(2.0, min(45.0, float(effect.get("tilt_angle", 18.0) or 18.0)))
+    rng = random.Random(int(float(effect.get("seed", 2468) or 2468)) + sum(map(ord, mode)))
+    particles = [
+        {
+            "x": cx + rng.uniform(-0.5, 0.5) * spread,
+            "phase": rng.random(),
+            "size": base_size * rng.uniform(0.62, 1.25),
+            "sway_phase": rng.uniform(0, math.tau),
+            "sway_rate": rng.uniform(0.75, 1.45),
+            "speed": rng.uniform(0.75, 1.25),
+            "alpha": rng.uniform(0.68, 1.0),
+        }
+        for _ in range(count)
+    ]
+
+    frame_dir = output_path.with_suffix("")
+    if frame_dir.exists():
+        shutil.rmtree(frame_dir)
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    for frame_index in range(frame_count):
+        elapsed = frame_index / fps
+        frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        if mode == "question_tilt":
+            phase = elapsed * speed * math.tau
+            angle = math.sin(phase) * tilt_angle
+            bob = math.sin(phase * 2.0 + 0.6) * sway * height
+            pulse = 1.0 + 0.045 * math.sin(phase * 2.0)
+            sprite = _question_mark_sprite(base_size * pulse, color, int(255 * intensity))
+            sprite = sprite.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
+            frame.alpha_composite(sprite, (int(round(cx - sprite.width / 2)), int(round(cy + bob - sprite.height / 2))))
+        else:
+            travel = max(base_size * 3.0, cy + base_size * 1.5)
+            for particle in particles:
+                local = (particle["phase"] + elapsed * speed * particle["speed"] * 0.24) % 1.0
+                x = particle["x"] + math.sin(elapsed * particle["sway_rate"] * math.tau + particle["sway_phase"]) * sway * width
+                y = cy + particle["size"] - local * travel
+                edge_fade = min(1.0, local / 0.10, (1.0 - local) / 0.12)
+                alpha = int(255 * intensity * particle["alpha"] * max(0.0, edge_fade))
+                sprite = _question_mark_sprite(particle["size"], color, alpha)
+                angle = math.sin(elapsed * particle["sway_rate"] * math.tau + particle["sway_phase"]) * 8.0
+                sprite = sprite.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
+                frame.alpha_composite(sprite, (int(round(x - sprite.width / 2)), int(round(y - sprite.height / 2))))
+        frame.save(frame_dir / f"frame_{frame_index:04d}.png")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log_path = require_project(project_id) / "temp" / "logs" / f"{output_path.stem}.log"
+    except HTTPException:
+        log_path = output_path.with_suffix(".log")
+    run_command(
+        [
+            "ffmpeg", "-y", "-framerate", str(fps), "-i", str(frame_dir / "frame_%04d.png"),
+            "-c:v", "qtrle", "-pix_fmt", "argb", str(output_path),
+        ],
+        log_path,
+    )
+    shutil.rmtree(frame_dir, ignore_errors=True)
+    return output_path
+
+
 def screen_effect_intervals(plan: dict, decoration: dict, effect_id: str) -> list[dict]:
     stacks = {str(stack.get("id") or "").strip(): stack for stack in (decoration.get("screen_effect_stacks") or []) if str(stack.get("id") or "").strip()}
     targets = decoration.get("screen_effect_targets") or {"global_stack_ids": [], "scene_stack_ids": {}}
@@ -1459,6 +1593,34 @@ def generate_screen_effect_overlays(
                 "end_sec": end_sec,
                 "type": effect_id,
                 "animated": True,
+            })
+    for effect_id in ("question_float_up", "question_tilt"):
+        for interval in screen_effect_intervals(plan, decoration, effect_id):
+            start_sec = float(interval.get("start_sec", 0.0) or 0.0)
+            end_sec = float(interval.get("end_sec", start_sec + 1.0) or (start_sec + 1.0))
+            duration_sec = max(0.1, end_sec - start_sec)
+            effect = {"id": effect_id, **dict(interval["effect"])}
+            path = screen_effect_cache_path(
+                base,
+                effect_id,
+                {
+                    "kind": "question_overlay_video",
+                    "effect_id": effect_id,
+                    "effect": effect,
+                    "duration_sec": round(duration_sec, 3),
+                    "canvas_size": canvas_size,
+                },
+                ".mov",
+            )
+            if not path.exists() or path.stat().st_size <= 0:
+                render_question_overlay_video(project_id, effect, path, duration_sec, canvas_size=canvas_size)
+            overlays.append({
+                "path": str(path),
+                "start_sec": start_sec,
+                "end_sec": end_sec,
+                "type": effect_id,
+                "animated": True,
+                "layer": "foreground" if effect_id == "question_tilt" else "screen",
             })
     return overlays
 
@@ -1835,6 +1997,36 @@ def sanitize_ass_text(text: str) -> str:
     value = value.replace("{", "(").replace("}", ")")
     value = value.replace("\n", r"\N")
     return value.strip()
+
+
+def ass_bilingual_text(item: dict, settings: dict, scale: float = 1.0) -> str:
+    source = subtitle_source_text(item)
+    translated = str(item.get("translated_text") or "").strip()
+    normalized = normalize_bilingual_settings(settings)
+    if not normalized["enabled"] or item.get("bilingual_enabled") is False or not translated:
+        return sanitize_ass_text(source)
+    mode = str(item.get("subtitle_display_mode") or normalized["display_mode"])
+    source_style = normalized["source_style"]
+    target_style = normalized["target_style"]
+
+    def styled(text: str, style: dict) -> str:
+        tags = (
+            f"\\fn{sanitize_ass_text(style['font_name'])}"
+            f"\\fs{int(round(style['font_size'] * scale))}"
+            f"\\1c{ass_color(style['color'])}"
+        )
+        return f"{{{tags}}}{sanitize_ass_text(text)}"
+
+    if mode == "source_only":
+        return styled(source, source_style)
+    if mode == "translation_only":
+        return styled(translated, target_style)
+    lines = (
+        (styled(translated, target_style), styled(source, source_style))
+        if mode == "translation_above"
+        else (styled(source, source_style), styled(translated, target_style))
+    )
+    return r"\N".join(line for line in lines if line)
 
 
 def sanitize_ass_comment_text(text: str) -> str:
@@ -2896,6 +3088,7 @@ def build_plain_ass(
     require_project(project_id)
     project_ui_state = project_info(project_id).get("ui_state") or {}
     default_style = normalize_ass_subtitle_style(project_ui_state.get("ass_subtitle_defaults"))
+    bilingual_settings = normalize_bilingual_settings(project_ui_state.get("bilingual_subtitle_settings"))
     scale = decoration_scale_for_canvas(canvas_size)
     style_name = "Default"
     ass_lines = [
@@ -2942,7 +3135,7 @@ def build_plain_ass(
     ]
     ass_lines.extend(ass_comment_line(line, style=style_name) for line in default_ai_ass_prompt_lines())
     for item in subtitles or []:
-        if item.get("enabled", True) is False or not str(item.get("text") or "").strip():
+        if item.get("enabled", True) is False or not subtitle_source_text(item):
             continue
         start = timeline_start_sec(item)
         end = max(start + 0.01, timeline_end_sec(item, start))
@@ -2972,7 +3165,7 @@ def build_plain_ass(
         ass_lines.append(
             f"Dialogue: 0,{ass_timecode(start)},{ass_timecode(end)},{style_name},,"
             f"{style['margin_l']},{style['margin_r']},{style['margin_v']},,"
-            f"{{{''.join(tags)}}}{sanitize_ass_text(item.get('text', ''))}"
+            f"{{{''.join(tags)}}}{ass_bilingual_text(item, bilingual_settings, scale)}"
         )
     atomic_write_text(output_path, "\n".join(ass_lines) + "\n", encoding="utf-8")
     return output_path
@@ -3020,6 +3213,7 @@ def build_decoration_ass(
     emotion_presets = load_emotion_presets()
     project_ui_state = project_info(project_id).get("ui_state") or {}
     project_ass_style = normalize_ass_subtitle_style(project_ui_state.get("ass_subtitle_defaults"))
+    bilingual_settings = normalize_bilingual_settings(project_ui_state.get("bilingual_subtitle_settings"))
     preset_default_font = next(iter(font_presets.values()), {"family": "Yu Gothic", "size": 44, "color": "#ffffff", "outline_color": "#000000", "outline_width": 4})
     default_font = {
         **preset_default_font,
@@ -3122,7 +3316,10 @@ def build_decoration_ass(
             font_for_geometry = dict(font)
             font_for_geometry["family"] = font_family
             font_for_geometry["size"] = int(float(item.get("font_size") or item_ass_style["font_size"] or font.get("size", 44)))
-            geometry = frame_canvas_geometry(item, frame_preset or {}, layout, font_for_geometry, canvas_size=canvas_size)
+            geometry_item = dict(item)
+            if bilingual_settings["enabled"] and item.get("translated_text"):
+                geometry_item["text"] = subtitle_display_text(item)
+            geometry = frame_canvas_geometry(geometry_item, frame_preset or {}, layout, font_for_geometry, canvas_size=canvas_size)
             has_decoration_layout = bool(item.get("layout_preset_id") or item.get("frame_preset_id"))
             if has_decoration_layout:
                 text_center_x, text_center_y = geometry["text_center"]
@@ -3134,7 +3331,10 @@ def build_decoration_ass(
                     (item_ass_style["margin_l"], item_ass_style["margin_r"], item_ass_style["margin_v"]),
                     canvas_size,
                 )
-            wrapped_text = r"\N".join(sanitize_ass_text(line) for line in geometry.get("lines", []) if line is not None) or sanitize_ass_text(item.get("text", ""))
+            if bilingual_settings["enabled"] and item.get("translated_text"):
+                wrapped_text = ass_bilingual_text(item, bilingual_settings, scale)
+            else:
+                wrapped_text = r"\N".join(sanitize_ass_text(line) for line in geometry.get("lines", []) if line is not None) or sanitize_ass_text(item.get("text", ""))
             text_tags = [
                 f"\\an{text_alignment}",
                 f"\\pos({text_center_x:.1f},{text_center_y:.1f})",
@@ -3254,15 +3454,19 @@ def render_decoration_video(
         canvas_size,
         name="preview_frame_overlays" if preview else "decoration_frame_overlays",
     )
-    overlays = [*screen_overlays]
+    foreground_overlays = [item for item in screen_overlays if item.get("layer") == "foreground"]
+    overlays = [item for item in screen_overlays if item.get("layer") != "foreground"]
     if flattened_frame_overlay:
         overlays.append(flattened_frame_overlay)
     else:
         overlays.extend(frame_overlays)
+    overlays.extend(foreground_overlays)
     if screen_filter_expr:
         filter_parts.append(f"{last_label}{screen_filter_expr}[vfx]")
         last_label = "[vfx]"
     for index, overlay in enumerate(overlays, start=1):
+        if overlay.get("layer") == "foreground":
+            continue
         overlay_path = Path(overlay["path"])
         start_sec = float(overlay.get("start_sec", 0.0) or 0.0)
         end_sec = float(overlay.get("end_sec", start_sec + 1.0) or (start_sec + 1.0))
@@ -3272,13 +3476,24 @@ def render_decoration_video(
         )
         last_label = f"[v{index}]"
         overlays[index - 1]["path"] = str(overlay_path)
+    filter_parts.append(f"{last_label}subtitles=filename='{ass_filter_path}'[vsubtitles]")
+    last_label = "[vsubtitles]"
+    for index, overlay in enumerate(overlays, start=1):
+        if overlay.get("layer") != "foreground":
+            continue
+        start_sec = float(overlay.get("start_sec", 0.0) or 0.0)
+        end_sec = float(overlay.get("end_sec", start_sec + 1.0) or (start_sec + 1.0))
+        filter_parts.append(
+            f"{last_label}[{index}:v]overlay=0:0:eof_action=pass:enable='between(t,{start_sec:.3f},{end_sec:.3f})'"
+            f"[vfront{index}]"
+        )
+        last_label = f"[vfront{index}]"
+    final_filters: list[str] = []
     if preview_height > 0:
-        final_filter = f"subtitles=filename='{ass_filter_path}',fps={preview_fps}"
-    else:
-        final_filter = f"subtitles=filename='{ass_filter_path}'"
+        final_filters.append(f"fps={preview_fps}")
     if preview_duration > 0:
-        final_filter = f"{final_filter},trim=end={preview_duration:.3f},setpts=PTS-STARTPTS"
-    filter_parts.append(f"{last_label}{final_filter}[vout]")
+        final_filters.extend([f"trim=end={preview_duration:.3f}", "setpts=PTS-STARTPTS"])
+    filter_parts.append(f"{last_label}{','.join(final_filters) if final_filters else 'null'}[vout]")
     preview_crf = "36" if preview and preview_height and preview_height <= 240 and preview_fps <= 3 else "30"
     filter_complex = ";".join(filter_parts)
     render_cwd = ass_path.parent
@@ -3972,6 +4187,8 @@ def load_decoration_presets() -> dict:
             {"id": "heart_sparkle", "name": "ハートきらめき"},
             {"id": "heart_tunnel", "name": "ハートトンネル"},
             {"id": "heart_orbit_burst", "name": "回転ハートバースト"},
+            {"id": "question_float_up", "name": "ハテナ浮上"},
+            {"id": "question_tilt", "name": "大ハテナ首かしげ"},
             {"id": "hearts", "name": "ハート"},
             {"id": "balloons", "name": "風船"},
             {"id": "stars", "name": "流星"},
@@ -4672,6 +4889,11 @@ def load_project_subtitles(project_id: str, kind: str = "edited") -> dict:
         candidates = [resolve_project_path(project_id, "subtitles", "original.srt")]
     else:
         candidates = [resolve_project_path(project_id, "subtitles", "edited.srt"), resolve_project_path(project_id, "subtitles", "original.srt")]
+        edit_plan_path = resolve_project_path(project_id, "edit_plan.json")
+        if edit_plan_path.exists():
+            plan = load_project_edit_plan(project_id)
+            if isinstance(plan.get("subtitles"), list):
+                return {"kind": kind, "path": str(candidates[0]), "subtitles": plan["subtitles"]}
     for path in candidates:
         if path.exists():
             subtitles = parse_srt(path.read_text(encoding="utf-8", errors="replace"))
@@ -5343,6 +5565,7 @@ def transcribe_audio(
             "waveform_analysis_path": str(waveform_json_path),
         },
     )
+    finish_transcription_progress(project_id, success=True)
     return {
         "transcript_path": str(transcript_path),
         "srt_path": str(original_srt_path),
@@ -5814,6 +6037,29 @@ def detect_vad_speech_intervals(
     return {"speech_intervals": speech_intervals, "compute_profile": normalized_profile}
 
 
+def _ensure_ascii_model_path(packaged_model: Path) -> Path:
+    try:
+        str(packaged_model).encode("ascii")
+        return packaged_model
+    except UnicodeEncodeError:
+        pass
+    cache_dir = Path(tempfile.gettempdir()) / "cutsubtitle-silero-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_model = cache_dir / packaged_model.name
+    if not cached_model.exists() or cached_model.stat().st_size != packaged_model.stat().st_size:
+        temp_model = cache_dir / f"{packaged_model.name}.{uuid.uuid4().hex}.tmp"
+        shutil.copyfile(packaged_model, temp_model)
+        os.replace(temp_model, cached_model)
+    try:
+        str(cached_model).encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise RuntimeError(
+            "Silero VADのASCIIキャッシュを作成できません。"
+            "環境変数TEMPを半角英数字だけのパスへ設定してください。"
+        ) from exc
+    return cached_model
+
+
 @lru_cache(maxsize=1)
 def _load_silero_vad_resources() -> tuple[object, tuple[object, ...]]:
     try:
@@ -5823,8 +6069,23 @@ def _load_silero_vad_resources() -> tuple[object, tuple[object, ...]]:
     torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
     try:
         from silero_vad import get_speech_timestamps, load_silero_vad
+        from importlib import resources as importlib_resources
 
-        return load_silero_vad(), (get_speech_timestamps,)
+        packaged_model = Path(str(importlib_resources.files("silero_vad.data").joinpath("silero_vad.jit")))
+        load_path = _ensure_ascii_model_path(packaged_model)
+        if load_path == packaged_model:
+            model = load_silero_vad()
+        else:
+            # torch.jit.load on Windows can fail when its model path contains Japanese characters.
+            from silero_vad.utils_vad import init_jit_model
+
+            model = init_jit_model(str(load_path))
+            audit_event(
+                "silero_vad.model_ascii_cache",
+                detail="loaded Silero VAD model from an ASCII-only cache path",
+                context={"cache_path": str(load_path)},
+            )
+        return model, (get_speech_timestamps,)
     except ImportError:
         pass
     try:
@@ -7415,11 +7676,13 @@ def _render_plan_media(
                 canvas_size,
                 name="final_frame_overlays",
             )
-            overlays = [*screen_overlays]
+            foreground_overlays = [item for item in screen_overlays if item.get("layer") == "foreground"]
+            overlays = [item for item in screen_overlays if item.get("layer") != "foreground"]
             if flattened_frame_overlay:
                 overlays.append(flattened_frame_overlay)
             else:
                 overlays.extend(frame_overlays)
+            overlays.extend(foreground_overlays)
             burn_cwd = ass_path.parent
 
             def burn_arg_path(path: Path | str) -> str:
@@ -7457,13 +7720,26 @@ def _render_plan_media(
                     filter_parts.append(f"{last_label}{screen_filter_expr}[vfx]")
                     last_label = "[vfx]"
                 for index, overlay in enumerate(overlays, start=1):
+                    if overlay.get("layer") == "foreground":
+                        continue
                     start_sec = float(overlay.get("start_sec", 0.0) or 0.0)
                     end_sec = float(overlay.get("end_sec", start_sec + 1.0) or (start_sec + 1.0))
                     filter_parts.append(
                         f"{last_label}[{index}:v]overlay=0:0:eof_action=pass:enable='between(t,{start_sec:.3f},{end_sec:.3f})'[vfx{index}]"
                     )
                     last_label = f"[vfx{index}]"
-                filter_parts.append(f"{last_label}{subtitles_filter}[vout]")
+                filter_parts.append(f"{last_label}{subtitles_filter}[vsubtitles]")
+                last_label = "[vsubtitles]"
+                for index, overlay in enumerate(overlays, start=1):
+                    if overlay.get("layer") != "foreground":
+                        continue
+                    start_sec = float(overlay.get("start_sec", 0.0) or 0.0)
+                    end_sec = float(overlay.get("end_sec", start_sec + 1.0) or (start_sec + 1.0))
+                    filter_parts.append(
+                        f"{last_label}[{index}:v]overlay=0:0:eof_action=pass:enable='between(t,{start_sec:.3f},{end_sec:.3f})'[vfront{index}]"
+                    )
+                    last_label = f"[vfront{index}]"
+                filter_parts.append(f"{last_label}null[vout]")
                 filter_script_path = base / "temp" / "logs" / "final_burn_filter.txt"
                 atomic_write_text(filter_script_path, ";".join(filter_parts))
                 burn_args += ["-filter_complex_script", burn_arg_path(filter_script_path), "-map", "[vout]", "-map", "0:a?"]
